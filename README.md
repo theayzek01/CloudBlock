@@ -1,60 +1,68 @@
-<p align="center">
-  <img src="Cloudblocklogo.png" alt="Cloud Block Logo" width="150" />
-</p>
+<div align="center">
+  <img src="Cloudblocklogo.png" alt="Cloud Block Logo" width="180" />
 
-<h1 align="center">Cloud Block ☁️</h1>
+  # Cloud Block ☁️
+  
+  **Scratch için Geliştirilmiş, Yeni Nesil Gerçek Zamanlı İşbirliği Eklentisi**
 
-<p align="center">
-  <strong>The Ultimate, Ultra-Premium Real-Time Collaboration Extension for Scratch.</strong>
-  <br>
-  <em>Built for speed, stability, and a flawless user experience. Say goodbye to lags and crashes.</em>
-</p>
+  [![Manifest V3](https://img.shields.io/badge/Manifest_V3-34A853?style=for-the-badge&logo=googlechrome&logoColor=white)](#)
+  [![React](https://img.shields.io/badge/React_18-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)](#)
+  [![Socket.io](https://img.shields.io/badge/Socket.io-010101?style=for-the-badge&logo=socket.io&logoColor=white)](#)
+  [![Scratch Mod](https://img.shields.io/badge/Scratch_Uyumlu-4D97FF?style=for-the-badge&logo=scratch&logoColor=white)](#)
 
-<p align="center">
-  <img src="https://img.shields.io/badge/Manifest-V3-blue.svg" alt="Manifest V3" />
-  <img src="https://img.shields.io/badge/React-18.x-61DAFB.svg?logo=react" alt="React" />
-  <img src="https://img.shields.io/badge/Socket.io-4.x-black.svg?logo=socket.io" alt="Socket.io" />
-  <img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License" />
-</p>
+</div>
 
-## ✨ Why Cloud Block?
+<br>
 
-Cloud Block redefines how people collaborate on [Scratch.mit.edu](https://scratch.mit.edu). Traditional extensions suffer from spaghetti code, heavy server loads, and clunky UIs. We built Cloud Block from the ground up to be **minimalist on the outside and an engineering marvel on the inside**.
+Eski, sürekli çöken ve arayüzü kafa karıştıran eklentileri unutun. **Cloud Block**, [Scratch.mit.edu](https://scratch.mit.edu) üzerinde takım çalışması yapmayı adeta profesyonel bir yazılım ofisindeymişsiniz gibi akıcı, şık ve sorunsuz hale getirmek için sıfırdan tasarlandı.
 
-- **Glassmorphism UI:** A hyper-aesthetic, pill-shaped, ultra-soft user interface that feels natively integrated but vastly superior.
-- **Figma-Style Smooth Cursors (60+ FPS):** See your teammates' cursors glide across the screen with zero lag and beautiful, hardware-accelerated CSS transforms.
-- **Hyper-Optimized Backend:** Our custom Temporary Memory & Event Batching algorithm reduces server load by **90%**. Handles 100+ concurrent users in a single project without breaking a sweat.
-- **CRDT Block Synchronization:** Say goodbye to corrupted code. Two people dragging the same block? Cloud Block resolves conflicts intelligently.
-- **Time Machine (Undo/Redo):** Built-in history state management. Someone ruined the project? Rewind to 5 minutes ago with a single click.
+## 🔥 Neden Cloud Block? Neyi Farklı Yaptık?
 
-## 🚀 Installation (Developer Preview)
+Piyasadaki diğer eklentilerin en büyük sorunu **sunucu optimizasyonu** ve **arayüz** tarafında sınıfta kalmalarıydı. Biz mimariyi baştan aşağı değiştirdik.
 
-### 1. Backend Server
+* 🎨 **Glassmorphism Arayüz:** Keskin köşeler yok. Tamamen "hap" formunda yuvarlatılmış hatlar, buzlu cam efektleri ve minimalist bir menü. Scratch'in içine sonradan yamalanmış gibi değil, orijinal ve premium bir parça gibi hissettirir.
+* 🖱️ **Figma Tarzı Pürüzsüz İmleçler:** Arkadaşınızın faresi ekranda ışınlanmaz. Özel CSS donanım ivmelendirmesi sayesinde 60+ FPS ile yağ gibi akar. Herkesin kendine has bir rengi ve yuvarlak isim etiketi vardır.
+* 🚀 **Kusursuz Sunucu Optimizasyonu (Sıfır Çökme):** Fareyi her oynattığınızda sunucuya yüzlerce veri gitmez. Cloud Block, özel bir **Geçici Bellek (Batched Cursor Cache)** mimarisi kullanır. Veriler sunucuda toplanıp saniyede 20 kez toplu paketler halinde dağıtılır. Aynı projeye 100 kişi girse bile sunucu yorulmaz, internetiniz sömürülmez.
+* 🧩 **Çakışma Koruması (CRDT):** İki kişi aynı anda aynı koda mı dokundu? Bloklarınız birbirine girmeyecek. Akıllı eşitleme motorumuz olayları milisaniyeler içinde sıraya koyar.
+* ⏳ **Zaman Makinesi:** "Biri yanlışlıkla tüm kodları sildi!" derdi bitti. Projenizin tüm büyük değişimleri bulutta güvende. Menüdeki tek bir tuşla dakikalar öncesine geri dönebilirsiniz.
+
+<br>
+
+## 🛠️ Nasıl Kurulur? (Geliştirici Sürümü)
+
+Projeyi kendi bilgisayarınızda derleyip hemen denemek için adımları takip edin:
+
+### 1. Backend (Sunucu) Kurulumu
+Gerçek zamanlı eşitlemenin kalbi olan sunucuyu başlatıyoruz:
 ```bash
 cd server
 npm install
-npm start
-# Server runs on http://localhost:3001
+node index.js
 ```
+> Sunucu varsayılan olarak `http://localhost:3001` portunda çalışmaya başlar.
 
-### 2. Chrome Extension
+### 2. Chrome Eklentisini Paketleme
+React ve Vite ile yazdığımız modern eklentimizi tarayıcının anlayacağı dile çeviriyoruz:
 ```bash
 cd extension
 npm install
 npm run build
 ```
-Then, go to `chrome://extensions/`, enable **Developer mode**, click **Load unpacked**, and select the `extension/dist` folder.
 
-## 🧠 Architecture Overview
+**Tarayıcıya Ekleme:**
+1. Chrome'da `chrome://extensions/` adresine gidin.
+2. Sağ üstten **Geliştirici modunu** aktif edin.
+3. Sol üstteki **Paketlenmemiş öğe yükle** (Load unpacked) butonuna tıklayın.
+4. Projenin içindeki `extension/dist` klasörünü seçin.
 
-### Minimalist Frontend
-Built with **React & Vite**, packaged seamlessly into a Chrome Manifest V3 Extension. Uses `Zustand` for state management and injects a heavily optimized "Interceptor" into Blockly's core event stream.
+Hepsi bu kadar! Artık Scratch'e girdiğinizde sol üstte şık Cloud Block butonunu göreceksiniz.
 
-### Batched & Throttled Backend
-Node.js + Socket.io backend utilizing an **In-Memory Cursor Cache**. Instead of broadcasting every pixel movement, the server batches events and emits a single optimized packet 20 times a second, saving massive amounts of bandwidth.
+<br>
 
-## 🤝 Contributing
-We are going global! Feel free to open issues and pull requests. Let's make Scratch collaboration perfect.
+## 🏗️ Mimari Yapı
+
+**Frontend (İstemci):** React.js ve Vite üzerine kurulu. State yönetimi için hafifliğiyle bilinen `Zustand` kullanıldı. Blockly motoruna doğrudan müdahale etmek yerine olayları dışarıdan okuyan bir "Interceptor" mantığıyla çalışır. <br>
+**Backend (Sunucu):** Node.js ve Socket.io gücüyle yazıldı. Odak noktası "Spam Engelleme" (Throttling/Batching) olduğu için bellek yönetimi son derece düşüktür.
 
 ---
-*Disclaimer: Cloud Block is an independent project and is not affiliated with the Scratch Foundation.*
+*Not: Bu proje bağımsız olarak geliştirilmiştir ve Scratch Vakfı (Scratch Foundation) ile herhangi bir resmi bağı bulunmamaktadır.*
