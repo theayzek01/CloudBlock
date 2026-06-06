@@ -24,8 +24,8 @@ interface Checkpoint {
   timestamp: number;
 }
 
-// Draggable hook for free movement of the UI panel
-function useDraggable() {
+// Draggable hook for free movement of the UI panel with screen boundaries
+function useDraggable(isOpen: boolean) {
   const [position, setPosition] = useState({ x: 20, y: 70 });
   const [isDragging, setIsDragging] = useState(false);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
@@ -43,9 +43,15 @@ function useDraggable() {
   useEffect(() => {
     if (!isDragging) return;
     const handleMouseMove = (e: MouseEvent) => {
+      const panelWidth = isOpen ? 325 : 120;
+      const panelHeight = isOpen ? 436 : 48;
+
+      const maxX = window.innerWidth - panelWidth;
+      const maxY = window.innerHeight - panelHeight;
+
       setPosition({
-        x: Math.max(0, e.clientX - offset.x),
-        y: Math.max(0, e.clientY - offset.y)
+        x: Math.min(Math.max(0, e.clientX - offset.x), maxX),
+        y: Math.min(Math.max(0, e.clientY - offset.y), maxY)
       });
     };
     const handleMouseUp = () => setIsDragging(false);
@@ -56,7 +62,20 @@ function useDraggable() {
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [isDragging, offset]);
+  }, [isDragging, offset, isOpen]);
+
+  // Adjust panel position on expand/collapse to prevent screen overflow
+  useEffect(() => {
+    const panelWidth = isOpen ? 325 : 120;
+    const panelHeight = isOpen ? 436 : 48;
+    const maxX = window.innerWidth - panelWidth;
+    const maxY = window.innerHeight - panelHeight;
+
+    setPosition(prev => ({
+      x: Math.min(Math.max(0, prev.x), maxX),
+      y: Math.min(Math.max(0, prev.y), maxY)
+    }));
+  }, [isOpen]);
 
   return { position, handleMouseDown, isDragging };
 }
@@ -65,10 +84,12 @@ const CloudBlockUI: React.FC = () => {
   const [isOpen, setIsOpen] = useState(true);
   const [activeTab, setActiveTab] = useState<'session' | 'chat' | 'history'>('session');
   
-  // Lobby state
+  // Lobby and mobile states
   const [inLobby, setInLobby] = useState(() => window.location.hash === '#cloudblock-lobby');
   const [lobbyUsers, setLobbyUsers] = useState<string[]>([]);
   const [shareCursor, setShareCursor] = useState(true);
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768);
+  const [mobileShowStage, setMobileShowStage] = useState(false);
 
   // Theme state
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
@@ -81,7 +102,7 @@ const CloudBlockUI: React.FC = () => {
   const [chatInput, setChatInput] = useState('');
   
   const chatScrollRef = useRef<HTMLDivElement>(null);
-  const { position, handleMouseDown, isDragging } = useDraggable();
+  const { position, handleMouseDown, isDragging } = useDraggable(isOpen);
   
   // Google Meet-style color choices
   const lobbyColors = [
@@ -106,8 +127,9 @@ const CloudBlockUI: React.FC = () => {
 
   const roomId = getRoomId();
 
-  // Inject animations in document
+  // Inject animations and responsive mobile styles into document
   useEffect(() => {
+    // 1. Inject animations
     const styleId = 'cloudblock-lobby-animations';
     if (!document.getElementById(styleId)) {
       const style = document.createElement('style');
@@ -125,6 +147,87 @@ const CloudBlockUI: React.FC = () => {
       `;
       document.head.appendChild(style);
     }
+
+    // 2. Inject Mobile responsive override styles
+    const mobileStyleId = 'cloudblock-mobile-styles';
+    if (!document.getElementById(mobileStyleId)) {
+      const style = document.createElement('style');
+      style.id = mobileStyleId;
+      style.textContent = `
+        @media (max-width: 767px) {
+          /* Compress Scratch Navigation bar */
+          [class*="menu-bar_main-menu"] {
+            display: none !important;
+          }
+          [class*="menu-bar_account-info"] {
+            display: none !important;
+          }
+          
+          /* Toggle visibility of Blockly editor and Scratch canvas stage */
+          body:not(.cb-show-stage) [class*="stage-wrapper_stage-wrapper"] {
+            display: none !important;
+          }
+          body:not(.cb-show-stage) [class*="sprite-selector_sprite-selector"] {
+            display: none !important;
+          }
+          
+          body.cb-show-stage [class*="gui_workspace-wrapper"],
+          body.cb-show-stage [class*="scratchCategoryMenu"],
+          body.cb-show-stage [class*="blocklyToolboxDiv"] {
+            display: none !important;
+          }
+          
+          /* Responsive UI stack layouts */
+          [class*="gui_body-wrapper"],
+          [class*="gui_flex-row"],
+          [class*="gui_stage-and-target-wrapper"] {
+            width: 100% !important;
+            height: calc(100vh - 48px) !important;
+            flex-direction: column !important;
+            display: block !important;
+            padding: 0 !important;
+            margin: 0 !important;
+          }
+
+          [class*="stage-wrapper_stage-wrapper"] {
+            width: 100% !important;
+            height: 100% !important;
+            max-width: 100% !important;
+            display: flex !important;
+            flex-direction: column !important;
+            align-items: center !important;
+            justify-content: center !important;
+          }
+          
+          /* Auto scale Canvas to fit mobile width */
+          [class*="stage_stage"] {
+            transform: scale(0.8) !important;
+            transform-origin: center center !important;
+            margin: 0 auto !important;
+          }
+
+          .blocklySvg {
+            width: 100% !important;
+            height: 100% !important;
+          }
+          
+          [class*="scratchCategoryMenu"],
+          [class*="blocklyToolboxDiv"] {
+            width: 48px !important;
+          }
+        }
+      `;
+      document.head.appendChild(style);
+    }
+  }, []);
+
+  // Listen to window size to trigger phone coding mode
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
   }, []);
 
   // Fetch active users once when in Lobby
@@ -223,7 +326,7 @@ const CloudBlockUI: React.FC = () => {
     }
     
     const name = prompt("Yedek için bir isim girin:", `Yedek ${new Date().toLocaleTimeString('tr-TR')}`);
-    if (name === null) return; // Cancelled
+    if (name === null) return; // Canceled
     
     try {
       const xml = Blockly.Xml.workspaceToDom(workspace);
@@ -273,8 +376,17 @@ const CloudBlockUI: React.FC = () => {
     }
   };
 
-  // Google Material Design 3 theme colors
+  const toggleMobileStage = () => {
+    const next = !mobileShowStage;
+    setMobileShowStage(next);
+    if (next) {
+      document.body.classList.add('cb-show-stage');
+    } else {
+      document.body.classList.remove('cb-show-stage');
+    }
+  };
 
+  // Google Material Design 3 theme colors
   const themes = {
     dark: {
       bg: 'rgba(15, 23, 42, 0.96)', // Slate 900
@@ -594,92 +706,147 @@ const CloudBlockUI: React.FC = () => {
         fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
       }}>
         
-        {/* Material Design elevated Header with Drag Handle */}
-        <div 
-          onMouseDown={handleMouseDown}
-          onClick={() => { if (!isDragging) setIsOpen(!isOpen); }}
-          style={{
-            display: 'flex', 
-            alignItems: 'center', 
-            gap: '12px', 
-            padding: '12px 18px',
-            background: t.headerBg, 
-            backdropFilter: 'blur(20px)', 
-            WebkitBackdropFilter: 'blur(20px)',
-            border: `1px solid ${t.border}`, 
-            borderRadius: isOpen ? '24px 24px 0 0' : '24px',
-            boxShadow: t.shadow, 
-            cursor: isDragging ? 'grabbing' : 'grab',
-            color: t.textPrimary, 
-            fontWeight: 600, 
-            transition: 'border-radius 0.2s, background 0.3s, color 0.3s', 
-            width: '325px', 
-            boxSizing: 'border-box',
-            userSelect: 'none'
-          }}
-        >
-          {/* Material Drag Handle Icon */}
-          <span 
-            className="material-symbols-outlined" 
-            style={{ color: t.textSecondary, fontSize: '20px' }}
-          >
-            drag_indicator
-          </span>
-
-          <span style={{ flex: 1, fontSize: '15px', letterSpacing: '0.2px' }}>Cloud Block</span>
-
-          {/* Active Users Count Badge */}
-          <span style={{ 
-            background: t.activeTabBg, 
-            color: t.activeTab, 
-            padding: '4px 10px', 
-            borderRadius: '100px', 
-            fontSize: '11px',
-            fontWeight: 700,
-            display: 'flex',
-            alignItems: 'center',
-            gap: '4px'
-          }}>
-            <span className="material-symbols-outlined" style={{ fontSize: '12px' }}>group</span>
-            {Object.keys(remoteCursors).length + 1}
-          </span>
-
-          {/* Theme Toggle Button */}
-          <button
-            onClick={toggleTheme}
+        {/* Toggle Button / Header (MINIMIZED COMPACT MODE OR FULL HEADER) */}
+        {!isOpen ? (
+          <div 
+            onMouseDown={handleMouseDown}
+            onClick={() => { if (!isDragging) setIsOpen(true); }}
             style={{
-              background: 'transparent',
-              border: 'none',
-              color: t.textSecondary,
-              cursor: 'pointer',
+              display: 'flex', 
+              alignItems: 'center', 
+              justifyContent: 'center',
+              gap: '8px', 
+              padding: '10px 14px',
+              background: theme === 'dark' ? 'rgba(15, 23, 42, 0.5)' : 'rgba(255, 255, 255, 0.75)', 
+              backdropFilter: 'blur(12px)', 
+              WebkitBackdropFilter: 'blur(12px)',
+              border: `1px solid ${t.border}`, 
+              borderRadius: '999px',
+              boxShadow: t.shadow, 
+              cursor: isDragging ? 'grabbing' : 'grab',
+              color: t.textPrimary, 
+              fontWeight: 600, 
+              transition: 'all 0.3s ease', 
+              width: '120px', 
+              boxSizing: 'border-box',
+              userSelect: 'none',
+              opacity: 0.65
+            }}
+            onMouseEnter={e => {
+              e.currentTarget.style.opacity = '1';
+              e.currentTarget.style.transform = 'scale(1.03)';
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.opacity = '0.65';
+              e.currentTarget.style.transform = 'scale(1)';
+            }}
+          >
+            <span className="material-symbols-outlined" style={{ color: t.activeTab, fontSize: '18px' }}>
+              cloud
+            </span>
+            <span style={{ fontSize: '12px', letterSpacing: '0.1px' }}>Cloud</span>
+            <span style={{ 
+              background: t.activeTabBg, 
+              color: t.activeTab, 
+              padding: '2px 6px', 
+              borderRadius: '100px', 
+              fontSize: '10px',
+              fontWeight: 700,
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'center',
-              padding: '4px',
-              borderRadius: '50%',
-              transition: 'background 0.2s'
-            }}
-            onMouseOver={e => e.currentTarget.style.background = t.border}
-            onMouseOut={e => e.currentTarget.style.background = 'transparent'}
-          >
-            <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>
-              {theme === 'light' ? 'dark_mode' : 'light_mode'}
+              gap: '2px'
+            }}>
+              {Object.keys(remoteCursors).length + 1}
             </span>
-          </button>
-
-          {/* Expand/Collapse Indicator */}
-          <span 
-            className="material-symbols-outlined"
-            style={{ 
-              color: t.textSecondary, 
-              fontSize: '18px', 
-              transition: 'transform 0.2s',
-              transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)'
+          </div>
+        ) : (
+          /* Normal Expanded Header */
+          <div 
+            onMouseDown={handleMouseDown}
+            onClick={() => { if (!isDragging) setIsOpen(false); }}
+            style={{
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: '12px', 
+              padding: '12px 18px',
+              background: t.headerBg, 
+              backdropFilter: 'blur(20px)', 
+              WebkitBackdropFilter: 'blur(20px)',
+              border: `1px solid ${t.border}`, 
+              borderRadius: isOpen ? '24px 24px 0 0' : '24px',
+              boxShadow: t.shadow, 
+              cursor: isDragging ? 'grabbing' : 'grab',
+              color: t.textPrimary, 
+              fontWeight: 600, 
+              transition: 'border-radius 0.2s, background 0.3s, color 0.3s', 
+              width: '325px', 
+              boxSizing: 'border-box',
+              userSelect: 'none'
             }}
           >
-            expand_more
-          </span>
-        </div>
+            {/* Drag Handle Icon */}
+            <span 
+              className="material-symbols-outlined" 
+              style={{ color: t.textSecondary, fontSize: '20px' }}
+            >
+              drag_indicator
+            </span>
+
+            <span style={{ flex: 1, fontSize: '15px', letterSpacing: '0.2px' }}>Cloud Block</span>
+
+            {/* Active Users Badge */}
+            <span style={{ 
+              background: t.activeTabBg, 
+              color: t.activeTab, 
+              padding: '4px 10px', 
+              borderRadius: '100px', 
+              fontSize: '11px',
+              fontWeight: 700,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px'
+            }}>
+              <span className="material-symbols-outlined" style={{ fontSize: '12px' }}>group</span>
+              {Object.keys(remoteCursors).length + 1}
+            </span>
+
+            {/* Theme Toggle Button */}
+            <button
+              onClick={toggleTheme}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: t.textSecondary,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '4px',
+                borderRadius: '50%',
+                transition: 'background 0.2s'
+              }}
+              onMouseOver={e => e.currentTarget.style.background = t.border}
+              onMouseOut={e => e.currentTarget.style.background = 'transparent'}
+            >
+              <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>
+                {theme === 'light' ? 'dark_mode' : 'light_mode'}
+              </span>
+            </button>
+
+            {/* Collapse Icon */}
+            <span 
+              className="material-symbols-outlined"
+              style={{ 
+                color: t.textSecondary, 
+                fontSize: '18px', 
+                transition: 'transform 0.2s',
+                transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)'
+              }}
+            >
+              expand_more
+            </span>
+          </div>
+        )}
 
         {/* Panel Body */}
         {isOpen && (
@@ -789,7 +956,7 @@ const CloudBlockUI: React.FC = () => {
                     ))}
                   </div>
                   
-                  {/* Material Outlined Pill Button */}
+                  {/* Copy Link Button */}
                   <button 
                     onClick={copyInviteLink}
                     style={{
@@ -921,7 +1088,7 @@ const CloudBlockUI: React.FC = () => {
                       onFocus={e => e.target.style.borderColor = t.activeTab}
                       onBlur={e => e.target.style.borderColor = t.inputBorder}
                     />
-                    {/* Floating Action style Send Button */}
+                    {/* Floating Action Send Button */}
                     <button 
                       type="submit" 
                       style={{
@@ -1072,6 +1239,38 @@ const CloudBlockUI: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* Floating Action Button (FAB) for Mobile Mode view toggling */}
+      {isMobile && !inLobby && (
+        <button
+          onClick={toggleMobileStage}
+          style={{
+            position: 'fixed',
+            bottom: '20px',
+            right: '20px',
+            width: '56px',
+            height: '56px',
+            borderRadius: '28px',
+            background: 'linear-gradient(135deg, #0ea5e9, #2563eb)',
+            color: '#ffffff',
+            border: 'none',
+            boxShadow: '0 8px 24px rgba(2, 132, 199, 0.4)',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 9999999,
+            pointerEvents: 'auto',
+            transition: 'transform 0.1s'
+          }}
+          onMouseDown={e => e.currentTarget.style.transform = 'scale(0.92)'}
+          onMouseUp={e => e.currentTarget.style.transform = 'scale(1)'}
+        >
+          <span className="material-symbols-outlined" style={{ fontSize: '24px' }}>
+            {mobileShowStage ? 'code' : 'play_arrow'}
+          </span>
+        </button>
+      )}
     </>
   );
 };
