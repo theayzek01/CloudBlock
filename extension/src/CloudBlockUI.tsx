@@ -65,6 +65,11 @@ const CloudBlockUI: React.FC = () => {
   const [isOpen, setIsOpen] = useState(true);
   const [activeTab, setActiveTab] = useState<'session' | 'chat' | 'history'>('session');
   
+  // Lobby state
+  const [inLobby, setInLobby] = useState(() => window.location.hash === '#cloudblock-lobby');
+  const [lobbyUsers, setLobbyUsers] = useState<string[]>([]);
+  const [shareCursor, setShareCursor] = useState(true);
+
   // Theme state
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     return (localStorage.getItem('cloudblock-theme') as 'light' | 'dark') || 'dark';
@@ -78,8 +83,21 @@ const CloudBlockUI: React.FC = () => {
   const chatScrollRef = useRef<HTMLDivElement>(null);
   const { position, handleMouseDown, isDragging } = useDraggable();
   
-  // HSL color for messages
-  const [myColor] = useState(`hsl(${Math.floor(Math.random() * 360)}, 85%, 60%)`);
+  // Google Meet-style color choices
+  const lobbyColors = [
+    '#4285f4', // Google Blue
+    '#ea4335', // Google Red
+    '#fbbc05', // Google Yellow
+    '#34a853', // Google Green
+    '#6366f1', // Indigo
+    '#ec4899', // Pink
+    '#f97316'  // Orange
+  ];
+
+  // User's custom selected cursor/chat color
+  const [myColor, setMyColor] = useState(() => {
+    return lobbyColors[Math.floor(Math.random() * lobbyColors.length)];
+  });
 
   const getRoomId = () => {
     const match = window.location.pathname.match(/\/projects\/(\d+)/);
@@ -88,13 +106,48 @@ const CloudBlockUI: React.FC = () => {
 
   const roomId = getRoomId();
 
+  // Inject animations in document
   useEffect(() => {
+    const styleId = 'cloudblock-lobby-animations';
+    if (!document.getElementById(styleId)) {
+      const style = document.createElement('style');
+      style.id = styleId;
+      style.textContent = `
+        @keyframes cbPulse {
+          0% { transform: scale(1); opacity: 0.5; }
+          50% { transform: scale(1.12); opacity: 0.95; }
+          100% { transform: scale(1); opacity: 0.5; }
+        }
+        @keyframes cbFadeIn {
+          from { opacity: 0; transform: scale(0.95); }
+          to { opacity: 1; transform: scale(1); }
+        }
+      `;
+      document.head.appendChild(style);
+    }
+  }, []);
+
+  // Fetch active users once when in Lobby
+  useEffect(() => {
+    if (inLobby) {
+      firebaseClient.getActiveUsersOnce(roomId).then((users) => {
+        setLobbyUsers(users);
+      });
+    }
+  }, [inLobby, roomId]);
+
+  // Real-time synchronization starts only after joining the session
+  useEffect(() => {
+    if (inLobby) return;
+
     // Connect to Firebase
     firebaseClient.connect(roomId);
 
-    // Update cursor position with throttle handled inside firebaseClient
+    // Update cursor position if cursor sharing is enabled
     const handleMouseMove = (e: MouseEvent) => {
-      firebaseClient.emitCursor(roomId, e.clientX, e.clientY);
+      if (shareCursor) {
+        firebaseClient.emitCursor(roomId, e.clientX, e.clientY);
+      }
     };
     window.addEventListener('mousemove', handleMouseMove);
 
@@ -118,7 +171,7 @@ const CloudBlockUI: React.FC = () => {
       window.removeEventListener('mousemove', handleMouseMove);
       firebaseClient.disconnect();
     };
-  }, [roomId]);
+  }, [roomId, inLobby, shareCursor]);
 
   useEffect(() => {
     if (chatScrollRef.current) {
@@ -135,12 +188,18 @@ const CloudBlockUI: React.FC = () => {
   };
 
   const copyInviteLink = () => {
-    const link = `https://scratch.mit.edu/projects/${roomId}/editor`;
+    // Generate a link with lobby hash so people land on the lobby
+    const link = `https://scratch.mit.edu/projects/${roomId}/editor#cloudblock-lobby`;
     navigator.clipboard.writeText(link).then(() => {
-      alert("Proje davet bağlantısı kopyalandı! Bu linki diğer kullanıcılarla paylaşarak gerçek zamanlı çalışabilirsiniz.");
+      alert("Davet bağlantısı kopyalandı! Bu linki diğer kullanıcılarla paylaşarak gerçek zamanlı çalışabilirsiniz. Linki açan kişiler hazırlık odasından geçerek katılacaktır.");
     }).catch(err => {
       console.error(err);
     });
+  };
+
+  const joinOturum = () => {
+    setInLobby(false);
+    window.location.hash = ''; // Clear hash from the URL
   };
 
   const toggleTheme = (e: React.MouseEvent) => {
@@ -214,12 +273,13 @@ const CloudBlockUI: React.FC = () => {
     }
   };
 
-  // Google Material Design 3 theme values
+  // Google Material Design 3 theme colors
+
   const themes = {
     dark: {
-      bg: 'rgba(15, 23, 42, 0.95)', // Slate 900
+      bg: 'rgba(15, 23, 42, 0.96)', // Slate 900
       headerBg: 'rgba(30, 41, 59, 0.9)', // Slate 800
-      cardBg: 'rgba(30, 41, 59, 0.5)',
+      cardBg: 'rgba(30, 41, 59, 0.55)',
       textPrimary: '#f8fafc',
       textSecondary: '#94a3b8',
       border: 'rgba(255, 255, 255, 0.08)',
@@ -227,7 +287,7 @@ const CloudBlockUI: React.FC = () => {
       activeTabBg: 'rgba(56, 189, 248, 0.12)',
       btnBg: 'linear-gradient(135deg, #0ea5e9, #2563eb)',
       btnText: '#ffffff',
-      shadow: '0 16px 40px rgba(0, 0, 0, 0.5)',
+      shadow: '0 24px 64px rgba(0, 0, 0, 0.5)',
       inputBg: 'rgba(0, 0, 0, 0.25)',
       inputText: '#f8fafc',
       inputBorder: 'rgba(255, 255, 255, 0.12)',
@@ -235,9 +295,9 @@ const CloudBlockUI: React.FC = () => {
       chatOtherBg: 'rgba(255, 255, 255, 0.08)',
     },
     light: {
-      bg: 'rgba(255, 255, 255, 0.98)',
-      headerBg: 'rgba(241, 245, 249, 0.95)', // Slate 100
-      cardBg: 'rgba(241, 245, 249, 0.6)',
+      bg: 'rgba(255, 255, 255, 0.99)',
+      headerBg: 'rgba(241, 245, 249, 0.96)', // Slate 100
+      cardBg: 'rgba(241, 245, 249, 0.65)',
       textPrimary: '#0f172a', // Slate 900
       textSecondary: '#475569', // Slate 600
       border: 'rgba(0, 0, 0, 0.08)',
@@ -245,7 +305,7 @@ const CloudBlockUI: React.FC = () => {
       activeTabBg: 'rgba(2, 132, 199, 0.08)',
       btnBg: 'linear-gradient(135deg, #0284c7, #2563eb)',
       btnText: '#ffffff',
-      shadow: '0 16px 40px rgba(0, 0, 0, 0.12)',
+      shadow: '0 24px 64px rgba(0, 0, 0, 0.12)',
       inputBg: 'rgba(0, 0, 0, 0.04)',
       inputText: '#0f172a',
       inputBorder: 'rgba(0, 0, 0, 0.12)',
@@ -256,6 +316,261 @@ const CloudBlockUI: React.FC = () => {
 
   const t = themes[theme];
 
+  // LOBBY (PREPARATION ROOM) SCREEN
+  if (inLobby) {
+    return (
+      <div style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        width: '100vw',
+        height: '100vh',
+        background: theme === 'dark' ? 'rgba(15, 23, 42, 0.75)' : 'rgba(255, 255, 255, 0.75)',
+        backdropFilter: 'blur(24px)',
+        WebkitBackdropFilter: 'blur(24px)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 999999,
+        pointerEvents: 'auto',
+        fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+      }}>
+        {/* Meet-style Card Container */}
+        <div style={{
+          width: '450px',
+          padding: '32px',
+          background: t.bg,
+          border: `1px solid ${t.border}`,
+          borderRadius: '28px',
+          boxShadow: t.shadow,
+          display: 'flex',
+          flexDirection: 'column',
+          animation: 'cbFadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
+          color: t.textPrimary
+        }}>
+          {/* Pulsating Glowing Bulut Sync Icon */}
+          <div style={{
+            position: 'relative',
+            width: '64px',
+            height: '64px',
+            margin: '0 auto 16px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}>
+            <div style={{
+              position: 'absolute',
+              width: '100%',
+              height: '100%',
+              borderRadius: '50%',
+              background: 'radial-gradient(circle, #0ea5e9 0%, rgba(14,165,233,0) 70%)',
+              animation: 'cbPulse 2s infinite',
+              zIndex: 0
+            }}></div>
+            <span className="material-symbols-outlined" style={{
+              fontSize: '48px',
+              color: t.activeTab,
+              zIndex: 1,
+              position: 'relative'
+            }}>
+              cloud_sync
+            </span>
+          </div>
+
+          <h2 style={{ 
+            fontSize: '22px', 
+            fontWeight: 700, 
+            textAlign: 'center', 
+            margin: '0 0 8px 0', 
+            color: t.textPrimary,
+            letterSpacing: '-0.3px'
+          }}>
+            Cloud Block Hazırlık Odası
+          </h2>
+          
+          <p style={{ 
+            fontSize: '13px', 
+            color: t.textSecondary, 
+            textAlign: 'center', 
+            margin: '0 0 24px 0',
+            lineHeight: 1.5 
+          }}>
+            Oturuma katılmadan önce ayarlarınızı ve imlecinizi yapılandırın.
+          </p>
+
+          {/* Active Users Section */}
+          <div style={{ marginBottom: '24px' }}>
+            <div style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: '6px', 
+              color: t.textPrimary, 
+              fontWeight: 600, 
+              fontSize: '13px', 
+              marginBottom: '10px' 
+            }}>
+              <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>group</span>
+              Oturumdaki Aktif Kişiler ({lobbyUsers.length})
+            </div>
+            
+            <div style={{
+              background: t.cardBg,
+              border: `1px solid ${t.border}`,
+              borderRadius: '16px',
+              padding: '12px 16px',
+              maxHeight: '90px',
+              overflowY: 'auto',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '8px',
+              boxSizing: 'border-box'
+            }}>
+              {lobbyUsers.length === 0 ? (
+                <div style={{ color: t.textSecondary, fontSize: '12px', textAlign: 'center', padding: '6px 0' }}>
+                  Şu an odada aktif kimse yok. İlk katılan sen olacaksın!
+                </div>
+              ) : (
+                lobbyUsers.map(id => (
+                  <div key={id} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: t.textPrimary }}>
+                    <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: `hsl(${id.charCodeAt(0) * 55 % 360}, 85%, 60%)` }}></div>
+                    Kullanıcı {id.substring(0, 4)} <span style={{ color: t.textSecondary, fontSize: '10px' }}>(#{id})</span>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
+          {/* Quick Settings Section */}
+          <div style={{ 
+            background: t.cardBg, 
+            borderRadius: '16px', 
+            padding: '16px', 
+            border: `1px solid ${t.border}`,
+            marginBottom: '24px'
+          }}>
+            
+            {/* Color Picker */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '16px', borderBottom: `1px solid ${t.border}`, paddingBottom: '14px' }}>
+              <div style={{ fontSize: '12px', fontWeight: 600, color: t.textSecondary, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span>İmleç Rengini Seç</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <svg width="14" height="20" viewBox="0 0 24 36" fill="none">
+                    <path d="M5.65376 2.15376C5.40114 1.90114 5 2.08007 5 2.4375V33.5625C5 33.9199 5.40114 34.0989 5.65376 33.8462L13.8462 25.6538C13.9392 25.5608 14.0654 25.5086 14.1969 25.5086H25.5625C25.9199 25.5086 26.0989 25.1075 25.8462 24.8549L5.65376 2.15376Z" fill={myColor} stroke="white" strokeWidth="2" strokeLinejoin="round"/>
+                  </svg>
+                  <span>Önizleme</span>
+                </div>
+              </div>
+              
+              <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', marginTop: '6px' }}>
+                {lobbyColors.map(color => (
+                  <button
+                    key={color}
+                    type="button"
+                    onClick={() => setMyColor(color)}
+                    style={{
+                      width: '28px',
+                      height: '28px',
+                      borderRadius: '50%',
+                      background: color,
+                      border: myColor === color ? '3px solid white' : 'none',
+                      boxShadow: myColor === color ? '0 0 8px rgba(0,0,0,0.4)' : '0 2px 4px rgba(0,0,0,0.1)',
+                      cursor: 'pointer',
+                      transform: myColor === color ? 'scale(1.15)' : 'scale(1)',
+                      transition: 'transform 0.15s, border 0.15s',
+                      outline: 'none'
+                    }}
+                  />
+                ))}
+              </div>
+            </div>
+
+            {/* Cursor Share Toggle */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: '12px', borderBottom: `1px solid ${t.border}` }}>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <span className="material-symbols-outlined" style={{ color: t.textSecondary, fontSize: '20px' }}>mouse</span>
+                <div>
+                  <div style={{ fontSize: '13px', color: t.textPrimary, fontWeight: 600 }}>Fare İmlecimi Göster</div>
+                  <div style={{ fontSize: '10px', color: t.textSecondary }}>Hareketlerim başkalarına senkronize edilsin</div>
+                </div>
+              </div>
+              <input 
+                type="checkbox" 
+                checked={shareCursor} 
+                onChange={(e) => setShareCursor(e.target.checked)} 
+                style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: t.activeTab }}
+              />
+            </div>
+
+            {/* Theme Toggle */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: '12px' }}>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <span className="material-symbols-outlined" style={{ color: t.textSecondary, fontSize: '20px' }}>
+                  {theme === 'light' ? 'dark_mode' : 'light_mode'}
+                </span>
+                <div>
+                  <div style={{ fontSize: '13px', color: t.textPrimary, fontWeight: 600 }}>Arayüz Teması</div>
+                  <div style={{ fontSize: '10px', color: t.textSecondary }}>Tema seçimini buradan değiştirin</div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  const nextTheme = theme === 'light' ? 'dark' : 'light';
+                  setTheme(nextTheme);
+                  localStorage.setItem('cloudblock-theme', nextTheme);
+                }}
+                style={{
+                  background: t.activeTabBg,
+                  border: 'none',
+                  color: t.activeTab,
+                  padding: '6px 12px',
+                  borderRadius: '100px',
+                  fontSize: '11px',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  outline: 'none'
+                }}
+              >
+                {theme === 'light' ? 'Karanlık Yap' : 'Aydınlık Yap'}
+              </button>
+            </div>
+          </div>
+
+          {/* Join Button */}
+          <button
+            onClick={joinOturum}
+            style={{
+              width: '100%',
+              padding: '14px',
+              borderRadius: '100px',
+              border: 'none',
+              background: t.btnBg,
+              color: t.btnText,
+              fontWeight: 700,
+              fontSize: '14px',
+              cursor: 'pointer',
+              boxShadow: theme === 'dark' ? '0 8px 30px rgba(14, 165, 233, 0.4)' : '0 8px 20px rgba(2, 132, 199, 0.2)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '8px',
+              transition: 'transform 0.1s, opacity 0.2s',
+              outline: 'none'
+            }}
+            onMouseDown={e => e.currentTarget.style.transform = 'scale(0.98)'}
+            onMouseUp={e => e.currentTarget.style.transform = 'scale(1)'}
+            onMouseOver={e => e.currentTarget.style.opacity = '0.9'}
+            onMouseOut={e => e.currentTarget.style.opacity = '1'}
+          >
+            <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>login</span>
+            Oturuma Katıl
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // MAIN CO-WORKING INTERFACE (RUNS WHEN NOT IN LOBBY)
   return (
     <>
       {/* Render Remote Cursors on screen */}

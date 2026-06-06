@@ -311,6 +311,26 @@ class FirebaseClient {
   public onCursorUpdate(callback: (cursors: { [userId: string]: { x: number; y: number; color: string } }) => void) {
     this.cursorCallback = callback;
   }
+
+  // Get active users once for the Google Meet style Lobby
+  public async getActiveUsersOnce(roomId: string): Promise<string[]> {
+    try {
+      const cursorsCol = collection(db, 'rooms', roomId, 'cursors');
+      const cutoff = Date.now() - 12000; // 12 seconds
+      const q = query(cursorsCol, where('timestamp', '>=', cutoff));
+      const querySnapshot = await getDocs(q);
+      const list: string[] = [];
+      querySnapshot.forEach((docSnap) => {
+        if (docSnap.id !== myUserId) {
+          list.push(docSnap.id);
+        }
+      });
+      return list;
+    } catch (e) {
+      console.error("Firebase: getActiveUsersOnce error", e);
+      return [];
+    }
+  }
 }
 
 export const firebaseClient = new FirebaseClient();
