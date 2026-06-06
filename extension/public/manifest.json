@@ -1,0 +1,23 @@
+{
+  "manifest_version": 3,
+  "name": "Cloud Block",
+  "version": "1.0.0",
+  "description": "Ultra Premium Real-Time Collaboration for Scratch",
+  "icons": {
+    "128": "Cloudblocklogo.png"
+  },
+  "content_scripts": [
+    {
+      "matches": ["*://scratch.mit.edu/projects/*/editor*"],
+      "js": ["content.js"],
+      "css": ["content.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["*"],
+      "matches": ["*://scratch.mit.edu/*"]
+    }
+  ]
+}
