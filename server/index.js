@@ -38,6 +38,18 @@ io.on('connection', (socket) => {
     socket.to(roomId).emit('block_event', event);
   });
 
+  // Handle text chat
+  socket.on('chat_message', (data) => {
+    const { roomId, message, color } = data;
+    // Broadcast to everyone in the room EXCEPT the sender
+    socket.to(roomId).emit('chat_message', { 
+      userId: socket.id, 
+      message, 
+      color,
+      timestamp: Date.now()
+    });
+  });
+
   // OPTIMIZATION: Instead of broadcasting every pixel move instantly,
   // we save it to temporary memory (cursorState)
   socket.on('cursor_move', (data) => {

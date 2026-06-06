@@ -34,11 +34,24 @@ class SocketClient {
 
   public onBlockEvent(callback: (eventData: any) => void) {
     if (!this.socket) {
-      // If socket isn't ready yet, defer it
       setTimeout(() => this.onBlockEvent(callback), 500);
       return;
     }
     this.socket.on('block_event', callback);
+  }
+
+  public emitChatMessage(roomId: string, message: string, color: string) {
+    if (this.socket && this.socket.connected) {
+      this.socket.emit('chat_message', { roomId, message, color });
+    }
+  }
+
+  public onChatMessage(callback: (data: { userId: string, message: string, color: string, timestamp: number }) => void) {
+    if (!this.socket) {
+      setTimeout(() => this.onChatMessage(callback), 500);
+      return;
+    }
+    this.socket.on('chat_message', callback);
   }
 }
 
