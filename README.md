@@ -17,19 +17,19 @@
 
 Eski, sürekli çöken ve arayüzü kafa karıştıran eklentileri unutun. **Cloud Block**, <a href="https://scratch.mit.edu">Scratch.mit.edu</a> üzerinde takım çalışması yapmayı adeta profesyonel bir yazılım ofisindeymişsiniz gibi akıcı, şık ve sorunsuz hale getirmek için sıfırdan tasarlandı.
 
-## <img src="https://raw.githubusercontent.com/FortAwesome/Font-Awesome/6.x/svgs/solid/bolt.svg" width="20" height="20" alt="Icon" /> Neden Cloud Block? Neyi Farklı Yaptık?
+## <img src="https://icongr.am/feather/zap.svg?size=28&color=eab308" width="24" height="24" style="vertical-align: middle;" alt="Icon" /> Neden Cloud Block? Neyi Farklı Yaptık?
 
 Piyasadaki diğer eklentilerin en büyük sorunu **sunucu optimizasyonu** ve **arayüz** tarafında sınıfta kalmalarıydı. Biz mimariyi baştan aşağı değiştirdik.
 
-* <img src="https://raw.githubusercontent.com/FortAwesome/Font-Awesome/6.x/svgs/solid/layer-group.svg" width="16" height="16" alt="Icon" /> **Glassmorphism Arayüz:** Keskin köşeler yok. Tamamen "hap" formunda yuvarlatılmış hatlar, buzlu cam efektleri ve minimalist bir menü. Scratch'in içine sonradan yamalanmış gibi değil, orijinal ve premium bir parça gibi hissettirir.
-* <img src="https://raw.githubusercontent.com/FortAwesome/Font-Awesome/6.x/svgs/solid/arrow-pointer.svg" width="16" height="16" alt="Icon" /> **Figma Tarzı Pürüzsüz İmleçler:** Arkadaşınızın faresi ekranda ışınlanmaz. Özel CSS donanım ivmelendirmesi sayesinde 60+ FPS ile yağ gibi akar. Herkesin kendine has bir rengi ve yuvarlak isim etiketi vardır.
-* <img src="https://raw.githubusercontent.com/FortAwesome/Font-Awesome/6.x/svgs/solid/server.svg" width="16" height="16" alt="Icon" /> **Kusursuz Sunucu Optimizasyonu (Sıfır Çökme):** Fareyi her oynattığınızda sunucuya yüzlerce veri gitmez. Cloud Block, özel bir **Geçici Bellek (Batched Cursor Cache)** mimarisi kullanır. Veriler sunucuda toplanıp saniyede 20 kez toplu paketler halinde dağıtılır. Aynı projeye 100 kişi girse bile sunucu yorulmaz, internetiniz sömürülmez.
-* <img src="https://raw.githubusercontent.com/FortAwesome/Font-Awesome/6.x/svgs/solid/shield-halved.svg" width="16" height="16" alt="Icon" /> **Çakışma Koruması (CRDT):** İki kişi aynı anda aynı koda mı dokundu? Bloklarınız birbirine girmeyecek. Akıllı eşitleme motorumuz olayları milisaniyeler içinde sıraya koyar.
-* <img src="https://raw.githubusercontent.com/FortAwesome/Font-Awesome/6.x/svgs/solid/clock-rotate-left.svg" width="16" height="16" alt="Icon" /> **Zaman Makinesi:** "Biri yanlışlıkla tüm kodları sildi!" derdi bitti. Projenizin tüm büyük değişimleri bulutta güvende. Menüdeki tek bir tuşla dakikalar öncesine geri dönebilirsiniz.
+* <img src="https://icongr.am/feather/layers.svg?size=20&color=6366f1" width="18" height="18" style="vertical-align: middle;" alt="Icon" /> **Glassmorphism Arayüz:** Keskin köşeler yok. Tamamen "hap" formunda yuvarlatılmış hatlar, buzlu cam efektleri ve minimalist bir menü. Scratch'in içine sonradan yamalanmış gibi değil, orijinal ve premium bir parça gibi hissettirir.
+* <img src="https://icongr.am/feather/mouse-pointer.svg?size=20&color=ec4899" width="18" height="18" style="vertical-align: middle;" alt="Icon" /> **Figma Tarzı Pürüzsüz İmleçler:** Arkadaşınızın faresi ekranda ışınlanmaz. Özel CSS donanım ivmelendirmesi sayesinde 60+ FPS ile yağ gibi akar. Herkesin kendine has bir rengi ve yuvarlak isim etiketi vardır.
+* <img src="https://icongr.am/feather/server.svg?size=20&color=22c55e" width="18" height="18" style="vertical-align: middle;" alt="Icon" /> **Kusursuz Sunucu Optimizasyonu (Sıfır Çökme):** Fareyi her oynattığınızda sunucuya yüzlerce veri gitmez. Cloud Block, özel bir **Geçici Bellek (Batched Cursor Cache)** mimarisi kullanır. Veriler sunucuda toplanıp saniyede 20 kez toplu paketler halinde dağıtılır. Aynı projeye 100 kişi girse bile sunucu yorulmaz, internetiniz sömürülmez.
+* <img src="https://icongr.am/feather/shield.svg?size=20&color=3b82f6" width="18" height="18" style="vertical-align: middle;" alt="Icon" /> **Çakışma Koruması (CRDT):** İki kişi aynı anda aynı koda mı dokundu? Bloklarınız birbirine girmeyecek. Akıllı eşitleme motorumuz olayları milisaniyeler içinde sıraya koyar.
+* <img src="https://icongr.am/feather/clock.svg?size=20&color=f97316" width="18" height="18" style="vertical-align: middle;" alt="Icon" /> **Zaman Makinesi:** "Biri yanlışlıkla tüm kodları sildi!" derdi bitti. Projenizin tüm büyük değişimleri bulutta güvende. Menüdeki tek bir tuşla dakikalar öncesine geri dönebilirsiniz.
 
 <br>
 
-## <img src="https://raw.githubusercontent.com/FortAwesome/Font-Awesome/6.x/svgs/solid/screwdriver-wrench.svg" width="20" height="20" alt="Icon" /> Nasıl Kurulur? (Geliştirici Sürümü)
+## <img src="https://icongr.am/feather/download-cloud.svg?size=28&color=06b6d4" width="24" height="24" style="vertical-align: middle;" alt="Icon" /> Nasıl Kurulur? (Geliştirici Sürümü)
 
 Projeyi kendi bilgisayarınızda derleyip hemen denemek için adımları takip edin:
 
@@ -60,7 +60,7 @@ Hepsi bu kadar! Artık Scratch'e girdiğinizde sol üstte şık Cloud Block buto
 
 <br>
 
-## <img src="https://raw.githubusercontent.com/FortAwesome/Font-Awesome/6.x/svgs/solid/sitemap.svg" width="20" height="20" alt="Icon" /> Mimari Yapı
+## <img src="https://icongr.am/feather/cpu.svg?size=28&color=8b5cf6" width="24" height="24" style="vertical-align: middle;" alt="Icon" /> Mimari Yapı
 
 **Frontend (İstemci):** React.js ve Vite üzerine kurulu. State yönetimi için hafifliğiyle bilinen `Zustand` kullanıldı. Blockly motoruna doğrudan müdahale etmek yerine olayları dışarıdan okuyan bir "Interceptor" mantığıyla çalışır. <br>
 **Backend (Sunucu):** Node.js ve Socket.io gücüyle yazıldı. Odak noktası "Spam Engelleme" (Throttling/Batching) olduğu için bellek yönetimi son derece düşüktür.
