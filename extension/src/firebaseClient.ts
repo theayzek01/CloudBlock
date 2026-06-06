@@ -331,6 +331,106 @@ class FirebaseClient {
       return [];
     }
   }
+
+  // Register my online status globally on Scratch
+  public registerOnlineUser(roomId: string, username: string) {
+    const userDocRef = doc(db, 'online_users', myUserId);
+    setDoc(userDocRef, {
+      userId: myUserId,
+      username: username || `Kullanıcı ${myUserId}`,
+      roomId: roomId,
+      lastActive: Date.now()
+    }).catch(err => console.error("Firebase: Register online user error", err));
+  }
+
+  // Deregister my online status when leaving
+  public deregisterOnlineUser() {
+    const userDocRef = doc(db, 'online_users', myUserId);
+    deleteDoc(userDocRef).catch(() => {});
+  }
+
+  // Listen to other online users globally on Scratch
+  public listenOnlineUsers(callback: (users: any[]) => void): () => void {
+    const usersCol = collection(db, 'online_users');
+    const unsub = onSnapshot(usersCol, (snapshot) => {
+      const list: any[] = [];
+      const cutoff = Date.now() - 120000; // Active in last 2 minutes
+      snapshot.forEach((docSnap) => {
+        const data = docSnap.data();
+        if (data.userId !== myUserId && data.lastActive >= cutoff) {
+          list.push(data);
+        }
+      });
+      callback(list);
+    });
+    return unsub;
+  }
+
+  // Send invitation to another online user
+  public async sendInvitation(targetUserId: string, targetUsername: string, fromUsername: string, projectId: string) {
+    try {
+      const invitationsCol = collection(db, 'invitations');
+      const inviteId = `invite_${myUserId}_${targetUserId}_${Date.now()}`;
+      const inviteDoc = doc(invitationsCol, inviteId);
+      
+      await setDoc(inviteDoc, {
+        id: inviteId,
+        fromUserId: myUserId,
+        fromUsername: fromUsername || `Kullanıcı ${myUserId}`,
+        toUserId: targetUserId,
+        projectId: projectId,
+        timestamp: Date.now(),
+        status: 'pending'
+      });
+      console.log(`Firebase: Invitation sent to ${targetUsername} (${targetUserId})`);
+    } catch (e) {
+      console.error("Firebase: Send invitation error", e);
+      throw e;
+    }
+  }
+
+  // Listen for incoming invitations sent to me (Filtered in memory to avoid indexing dependencies)
+  public listenInvitations(callback: (invite: any) => void): () => void {
+    const invitationsCol = collection(db, 'invitations');
+    const q = query(invitationsCol, where('toUserId', '==', myUserId));
+    
+    const unsub = onSnapshot(q, (snapshot) => {
+      snapshot.docChanges().forEach((change) => {
+        if (change.type === 'added' || change.type === 'modified') {
+          const data = change.doc.data();
+          const cutoff = Date.now() - 300000; // Last 5 minutes
+          if (data.status === 'pending' && data.timestamp >= cutoff) {
+            callback(data);
+          }
+        }
+      });
+    });
+    return unsub;
+  }
+
+  // Respond to invitation
+  public async respondToInvitation(inviteId: string, status: 'accepted' | 'declined') {
+    try {
+      const inviteDoc = doc(db, 'invitations', inviteId);
+      await setDoc(inviteDoc, { status }, { merge: true });
+    } catch (e) {
+      console.error("Firebase: Respond to invitation error", e);
+    }
+  }
+
+  // Heartbeat helper to keep our online status alive
+  public startHeartbeat(roomId: string, getUsernameFn: () => string): () => void {
+    const interval = setInterval(() => {
+      this.registerOnlineUser(roomId, getUsernameFn());
+    }, 25000);
+    
+    this.registerOnlineUser(roomId, getUsernameFn());
+    
+    return () => {
+      clearInterval(interval);
+      this.deregisterOnlineUser();
+    };
+  }
 }
 
 export const firebaseClient = new FirebaseClient();

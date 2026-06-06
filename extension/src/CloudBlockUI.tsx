@@ -81,6 +81,9 @@ function useDraggable(isOpen: boolean) {
 }
 
 const CloudBlockUI: React.FC = () => {
+  // Determine if we are in the Scratch editor page or on a generic page
+  const isEditor = window.location.pathname.includes('/editor');
+
   const [isOpen, setIsOpen] = useState(true);
   const [activeTab, setActiveTab] = useState<'session' | 'chat' | 'history'>('session');
   
@@ -90,6 +93,13 @@ const CloudBlockUI: React.FC = () => {
   const [shareCursor, setShareCursor] = useState(true);
   const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768);
   const [mobileShowStage, setMobileShowStage] = useState(false);
+
+  // Invitation and online states
+  const [myScratchUsername, setMyScratchUsername] = useState('');
+  const [onlineUsers, setOnlineUsers] = useState<any[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [activeInvite, setActiveInvite] = useState<any>(null);
+  const [invitedUsers, setInvitedUsers] = useState<{ [userId: string]: boolean }>({});
 
   // Theme state
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
@@ -127,6 +137,57 @@ const CloudBlockUI: React.FC = () => {
 
   const roomId = getRoomId();
 
+  // Try to find Scratch logged in username from DOM
+  const getScratchUsernameFromDom = () => {
+    const profileNameEl = document.querySelector('.profile-name') || 
+                          document.querySelector('.username') || 
+                          document.querySelector('[class*="menu-bar_account-info"] span') ||
+                          document.querySelector('.nav-user-link .username');
+    return profileNameEl ? profileNameEl.textContent?.trim() || '' : '';
+  };
+
+  // Setup username check
+  useEffect(() => {
+    const checkUsername = () => {
+      const name = getScratchUsernameFromDom();
+      if (name) {
+        setMyScratchUsername(name);
+      } else {
+        setMyScratchUsername(`Kullanıcı ${myUserId.substring(0, 4)}`);
+      }
+    };
+    checkUsername();
+    const t = setTimeout(checkUsername, 2000);
+    return () => clearTimeout(t);
+  }, []);
+
+  // Heartbeat online user registration
+  useEffect(() => {
+    const cleanupHeartbeat = firebaseClient.startHeartbeat(
+      isEditor ? roomId : 'home',
+      () => myScratchUsername || `Kullanıcı ${myUserId.substring(0, 4)}`
+    );
+    return () => {
+      cleanupHeartbeat();
+    };
+  }, [roomId, myScratchUsername, isEditor]);
+
+  // Listen to other online users
+  useEffect(() => {
+    const unsub = firebaseClient.listenOnlineUsers((usersList) => {
+      setOnlineUsers(usersList);
+    });
+    return unsub;
+  }, []);
+
+  // Listen for incoming invitations sent to us
+  useEffect(() => {
+    const unsub = firebaseClient.listenInvitations((invite) => {
+      setActiveInvite(invite);
+    });
+    return unsub;
+  }, []);
+
   // Inject animations and responsive mobile styles into document
   useEffect(() => {
     // 1. Inject animations
@@ -143,6 +204,10 @@ const CloudBlockUI: React.FC = () => {
         @keyframes cbFadeIn {
           from { opacity: 0; transform: scale(0.95); }
           to { opacity: 1; transform: scale(1); }
+        }
+        @keyframes cbSlideUp {
+          from { transform: translateY(40px); opacity: 0; }
+          to { transform: translateY(0); opacity: 1; }
         }
       `;
       document.head.appendChild(style);
@@ -239,9 +304,9 @@ const CloudBlockUI: React.FC = () => {
     }
   }, [inLobby, roomId]);
 
-  // Real-time synchronization starts only after joining the session
+  // Real-time editor synchronization starts only after joining the session
   useEffect(() => {
-    if (inLobby) return;
+    if (inLobby || !isEditor) return;
 
     // Connect to Firebase
     firebaseClient.connect(roomId);
@@ -274,7 +339,7 @@ const CloudBlockUI: React.FC = () => {
       window.removeEventListener('mousemove', handleMouseMove);
       firebaseClient.disconnect();
     };
-  }, [roomId, inLobby, shareCursor]);
+  }, [roomId, inLobby, shareCursor, isEditor]);
 
   useEffect(() => {
     if (chatScrollRef.current) {
@@ -291,7 +356,6 @@ const CloudBlockUI: React.FC = () => {
   };
 
   const copyInviteLink = () => {
-    // Generate a link with lobby hash so people land on the lobby
     const link = `https://scratch.mit.edu/projects/${roomId}/editor#cloudblock-lobby`;
     navigator.clipboard.writeText(link).then(() => {
       alert("Davet bağlantısı kopyalandı! Bu linki diğer kullanıcılarla paylaşarak gerçek zamanlı çalışabilirsiniz. Linki açan kişiler hazırlık odasından geçerek katılacaktır.");
@@ -386,6 +450,33 @@ const CloudBlockUI: React.FC = () => {
     }
   };
 
+  const inviteUser = async (targetUser: any) => {
+    try {
+      await firebaseClient.sendInvitation(targetUser.userId, targetUser.username, myScratchUsername, roomId);
+      setInvitedUsers(prev => ({ ...prev, [targetUser.userId]: true }));
+      setTimeout(() => {
+        // Clear invite status after 5 seconds
+        setInvitedUsers(prev => ({ ...prev, [targetUser.userId]: false }));
+      }, 5000);
+    } catch (e) {
+      alert("Davet gönderilirken bir hata oluştu!");
+    }
+  };
+
+  const acceptInvite = () => {
+    if (!activeInvite) return;
+    firebaseClient.respondToInvitation(activeInvite.id, 'accepted');
+    const targetUrl = `https://scratch.mit.edu/projects/${activeInvite.projectId}/editor#cloudblock-lobby`;
+    setActiveInvite(null);
+    window.location.href = targetUrl;
+  };
+
+  const declineInvite = () => {
+    if (!activeInvite) return;
+    firebaseClient.respondToInvitation(activeInvite.id, 'declined');
+    setActiveInvite(null);
+  };
+
   // Google Material Design 3 theme colors
   const themes = {
     dark: {
@@ -427,6 +518,103 @@ const CloudBlockUI: React.FC = () => {
   };
 
   const t = themes[theme];
+
+  // Filter search results
+  const filteredUsers = onlineUsers.filter(user => {
+    // Exclude users already in our room cursors list
+    if (remoteCursors[user.userId]) return false;
+    return user.username.toLowerCase().includes(searchQuery.toLowerCase());
+  });
+
+  // RENDER INVITATION TOAST (sol alt köşede bildirim)
+  const renderInviteToast = () => {
+    if (!activeInvite) return null;
+    return (
+      <div style={{
+        position: 'fixed',
+        bottom: '24px',
+        left: '24px',
+        zIndex: 10000000,
+        width: '330px',
+        padding: '20px',
+        background: t.bg,
+        border: `1px solid ${t.border}`,
+        borderRadius: '20px',
+        boxShadow: t.shadow,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '12px',
+        fontFamily: 'system-ui, -apple-system, sans-serif',
+        animation: 'cbSlideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
+        pointerEvents: 'auto',
+        color: t.textPrimary
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span className="material-symbols-outlined" style={{ color: t.activeTab, fontSize: '22px' }}>
+            forum
+          </span>
+          <span style={{ fontSize: '14px', fontWeight: 700, letterSpacing: '0.1px' }}>Proje Daveti!</span>
+        </div>
+        
+        <div style={{ fontSize: '13px', color: t.textSecondary, lineHeight: 1.4 }}>
+          <strong>{activeInvite.fromUsername}</strong> sizi Scratch projesinde beraber çalışmaya davet ediyor.
+        </div>
+        
+        <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
+          <button
+            onClick={declineInvite}
+            style={{
+              flex: 1,
+              padding: '10px',
+              borderRadius: '100px',
+              border: `1px solid ${t.border}`,
+              background: 'transparent',
+              color: t.textSecondary,
+              fontSize: '12px',
+              fontWeight: 600,
+              cursor: 'pointer',
+              outline: 'none'
+            }}
+            onMouseOver={e => e.currentTarget.style.background = t.cardBg}
+            onMouseOut={e => e.currentTarget.style.background = 'transparent'}
+          >
+            Reddet
+          </button>
+          
+          <button
+            onClick={acceptInvite}
+            style={{
+              flex: 1,
+              padding: '10px',
+              borderRadius: '100px',
+              border: 'none',
+              background: t.btnBg,
+              color: t.btnText,
+              fontSize: '12px',
+              fontWeight: 700,
+              cursor: 'pointer',
+              outline: 'none',
+              boxShadow: '0 4px 12px rgba(2, 132, 199, 0.15)'
+            }}
+            onMouseOver={e => e.currentTarget.style.opacity = '0.9'}
+            onMouseOut={e => e.currentTarget.style.opacity = '1'}
+          >
+            Katıl
+          </button>
+        </div>
+      </div>
+    );
+  };
+
+  // IF WE ARE ON SCRATCH HOMEPAGE / NON-EDITOR PAGES:
+  // Render ONLY the invite notification toast in the bottom-left corner!
+  if (!isEditor) {
+    return (
+      <>
+        {renderInviteToast()}
+      </>
+    );
+  }
 
   // LOBBY (PREPARATION ROOM) SCREEN
   if (inLobby) {
@@ -917,74 +1105,156 @@ const CloudBlockUI: React.FC = () => {
             {/* Tab Contents */}
             <div style={{ flex: 1, padding: '16px', overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
               
-              {/* SESSION TAB */}
+              {/* SESSION TAB (ONLINE USERS & SEARCH BAR & INVITATIONS) */}
               {activeTab === 'session' && (
                 <div style={{ animation: 'fadeIn 0.2s', display: 'flex', flexDirection: 'column', height: '100%' }}>
-                  <p style={{ color: t.textSecondary, fontSize: '12px', lineHeight: 1.5, marginBottom: '16px' }}>
-                    Scratch projeniz Firebase bulut ağına bağlandı. İmleçler ve Blockly hareketleri eş zamanlı olarak senkronize edilir.
-                  </p>
                   
+                  {/* Share Link button */}
+                  <button 
+                    onClick={copyInviteLink}
+                    style={{
+                      width: '100%', 
+                      padding: '10px', 
+                      borderRadius: '100px', 
+                      border: 'none',
+                      background: t.btnBg, 
+                      color: t.btnText, 
+                      fontWeight: 600, 
+                      fontSize: '12px',
+                      cursor: 'pointer', 
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '6px',
+                      marginBottom: '14px'
+                    }}
+                    onMouseOver={e => e.currentTarget.style.opacity = '0.9'}
+                    onMouseOut={e => e.currentTarget.style.opacity = '1'}
+                  >
+                    <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>link</span>
+                    Bağlantıyı Kopyala
+                  </button>
+
+                  {/* Online Users Search Bar */}
+                  <div style={{ marginBottom: '12px' }}>
+                    <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                      <span className="material-symbols-outlined" style={{ 
+                        position: 'absolute', 
+                        left: '12px', 
+                        color: t.textSecondary,
+                        fontSize: '18px'
+                      }}>
+                        search
+                      </span>
+                      <input 
+                        type="text"
+                        value={searchQuery}
+                        onChange={e => setSearchQuery(e.target.value)}
+                        placeholder="Scratch kullanıcısı davet et..."
+                        style={{
+                          width: '100%',
+                          padding: '8px 12px 8px 36px',
+                          borderRadius: '100px',
+                          border: `1px solid ${t.inputBorder}`,
+                          background: t.inputBg,
+                          color: t.inputText,
+                          fontSize: '11px',
+                          outline: 'none',
+                          boxSizing: 'border-box'
+                        }}
+                      />
+                    </div>
+                  </div>
+
                   {/* User List */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', flex: 1, overflowY: 'auto' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', flex: 1, overflowY: 'auto' }}>
+                    
+                    {/* Search Results / Global Online Users */}
+                    {searchQuery.trim() !== '' && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '8px' }}>
+                        <div style={{ fontSize: '10px', fontWeight: 700, color: t.textSecondary, paddingLeft: '4px' }}>Arama Sonuçları</div>
+                        {filteredUsers.length === 0 ? (
+                          <div style={{ fontSize: '11px', color: t.textSecondary, padding: '4px 8px' }}>Kullanıcı bulunamadı.</div>
+                        ) : (
+                          filteredUsers.map(user => (
+                            <div key={user.userId} style={{ 
+                              display: 'flex', 
+                              alignItems: 'center', 
+                              gap: '8px', 
+                              padding: '8px 12px', 
+                              background: t.cardBg, 
+                              borderRadius: '12px',
+                              border: `1px solid ${t.border}`
+                            }}>
+                              <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: `hsl(${user.userId.charCodeAt(0) * 55 % 360}, 85%, 60%)` }}></div>
+                              <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, flex: 1 }}>
+                                <span style={{ fontSize: '12px', color: t.textPrimary, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                  {user.username}
+                                </span>
+                                <span style={{ fontSize: '9px', color: t.textSecondary }}>
+                                  {user.roomId === 'home' ? 'Ana Menüde' : 'Editörde'}
+                                </span>
+                              </div>
+                              <button
+                                onClick={() => inviteUser(user)}
+                                disabled={invitedUsers[user.userId]}
+                                style={{
+                                  background: invitedUsers[user.userId] ? 'transparent' : t.activeTabBg,
+                                  color: invitedUsers[user.userId] ? t.textSecondary : t.activeTab,
+                                  border: invitedUsers[user.userId] ? `1px solid ${t.border}` : 'none',
+                                  padding: '5px 12px',
+                                  borderRadius: '100px',
+                                  fontSize: '10px',
+                                  fontWeight: 700,
+                                  cursor: invitedUsers[user.userId] ? 'default' : 'pointer',
+                                  outline: 'none',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '2px'
+                                }}
+                              >
+                                <span className="material-symbols-outlined" style={{ fontSize: '12px' }}>
+                                  {invitedUsers[user.userId] ? 'done' : 'mail'}
+                                </span>
+                                {invitedUsers[user.userId] ? 'Davet Gitti' : 'Davet Et'}
+                              </button>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    )}
+
+                    {/* Room Members */}
+                    <div style={{ fontSize: '10px', fontWeight: 700, color: t.textSecondary, paddingLeft: '4px', marginTop: searchQuery.trim() !== '' ? '8px' : '0' }}>Odadaki Kişiler</div>
                     <div style={{ 
                       display: 'flex', 
                       alignItems: 'center', 
                       gap: '10px', 
-                      padding: '10px 12px', 
+                      padding: '8px 12px', 
                       background: t.cardBg, 
-                      borderRadius: '14px',
+                      borderRadius: '12px',
                       border: `1px solid ${t.border}`
                     }}>
-                      <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: myColor, boxShadow: `0 0 8px ${myColor}` }}></div>
-                      <span style={{ fontSize: '13px', color: t.textPrimary, fontWeight: 600 }}>Sen (Host)</span>
-                      <span style={{ marginLeft: 'auto', fontSize: '11px', color: t.textSecondary }}>#{myUserId}</span>
+                      <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: myColor, boxShadow: `0 0 6px ${myColor}` }}></div>
+                      <span style={{ fontSize: '12px', color: t.textPrimary, fontWeight: 600 }}>{myScratchUsername} (Sen)</span>
+                      <span style={{ marginLeft: 'auto', fontSize: '10px', color: t.textSecondary }}>#{myUserId}</span>
                     </div>
                     {Object.entries(remoteCursors).map(([id, cursor]) => (
                       <div key={id} style={{ 
                         display: 'flex', 
                         alignItems: 'center', 
                         gap: '10px', 
-                        padding: '10px 12px', 
+                        padding: '8px 12px', 
                         background: t.cardBg, 
-                        borderRadius: '14px',
+                        borderRadius: '12px',
                         border: `1px solid ${t.border}`
                       }}>
-                        <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: cursor.color, boxShadow: `0 0 8px ${cursor.color}` }}></div>
-                        <span style={{ fontSize: '13px', color: t.textPrimary }}>Kullanıcı {id.substring(0, 4)}</span>
-                        <span style={{ marginLeft: 'auto', fontSize: '11px', color: t.textSecondary }}>#{id}</span>
+                        <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: cursor.color, boxShadow: `0 0 6px ${cursor.color}` }}></div>
+                        <span style={{ fontSize: '12px', color: t.textPrimary }}>Kullanıcı {id.substring(0, 4)}</span>
+                        <span style={{ marginLeft: 'auto', fontSize: '10px', color: t.textSecondary }}>#{id}</span>
                       </div>
                     ))}
                   </div>
-                  
-                  {/* Copy Link Button */}
-                  <button 
-                    onClick={copyInviteLink}
-                    style={{
-                      width: '100%', 
-                      marginTop: '16px', 
-                      padding: '12px', 
-                      borderRadius: '100px', 
-                      border: 'none',
-                      background: t.btnBg, 
-                      color: t.btnText, 
-                      fontWeight: 600, 
-                      fontSize: '13px',
-                      cursor: 'pointer', 
-                      boxShadow: theme === 'dark' ? '0 4px 20px rgba(14, 165, 233, 0.4)' : '0 4px 15px rgba(2, 132, 199, 0.2)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: '8px',
-                      transition: 'transform 0.1s, opacity 0.2s'
-                    }}
-                    onMouseDown={e => e.currentTarget.style.transform = 'scale(0.98)'}
-                    onMouseUp={e => e.currentTarget.style.transform = 'scale(1)'}
-                    onMouseOver={e => e.currentTarget.style.opacity = '0.9'}
-                    onMouseOut={e => e.currentTarget.style.opacity = '1'}
-                  >
-                    <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>link</span>
-                    Bağlantıyı Kopyala
-                  </button>
                 </div>
               )}
 
@@ -1271,6 +1541,9 @@ const CloudBlockUI: React.FC = () => {
           </span>
         </button>
       )}
+
+      {/* Invitation toast display */}
+      {renderInviteToast()}
     </>
   );
 };
