@@ -1,4 +1,4 @@
-import { socketClient } from './socketClient';
+import { firebaseClient } from './firebaseClient';
 
 export class BlocklyInterceptor {
   private workspace: any = null;
@@ -10,7 +10,7 @@ export class BlocklyInterceptor {
   }
 
   private setupListeners() {
-    socketClient.onBlockEvent((eventData: any) => {
+    firebaseClient.onBlockEvent((eventData: any) => {
       this.applyRemoteEvent(eventData);
     });
   }
@@ -33,6 +33,10 @@ export class BlocklyInterceptor {
   private hookEvents() {
     console.log("Cloud Block: Attached to Blockly Workspace!");
     
+    // Listen for room updates to change room ID
+    const match = window.location.pathname.match(/\/projects\/(\d+)/);
+    this.roomId = match ? match[1] : 'default_room';
+
     this.workspace.addChangeListener((event: any) => {
       // Ignore UI events (like clicking) that don't change logic
       if (event.type === 'ui') return;
@@ -42,10 +46,10 @@ export class BlocklyInterceptor {
 
       console.log("Block changed:", event);
       
-      // Emit to Socket.io via our socketClient
+      // Emit to Firebase
       try {
         const eventJson = event.toJson();
-        socketClient.emitBlockEvent(this.roomId, eventJson);
+        firebaseClient.emitBlockEvent(this.roomId, eventJson);
       } catch(e) {
         console.error("Cloud Block: Failed to serialize block event", e);
       }
@@ -55,17 +59,41 @@ export class BlocklyInterceptor {
   public applyRemoteEvent(eventData: any) {
     if (!this.workspace) return;
     
-    // @ts-ignore
-    const event = window.Blockly.Events.fromJson(eventData, this.workspace);
-    event.isCloudBlockSync = true;
-    
-    // @ts-ignore
-    window.Blockly.Events.disable();
-    event.run(true);
-    // @ts-ignore
-    window.Blockly.Events.enable();
+    // Handle workspace restoration from checkpoint
+    if (eventData && eventData.type === 'restore_workspace') {
+      console.log("Cloud Block: Restoring workspace from remote checkpoint");
+      try {
+        // @ts-ignore
+        const xml = window.Blockly.Xml.textToDom(eventData.workspaceXml);
+        // @ts-ignore
+        window.Blockly.Events.disable();
+        this.workspace.clear();
+        // @ts-ignore
+        window.Blockly.Xml.domToWorkspace(xml, this.workspace);
+        // @ts-ignore
+        window.Blockly.Events.enable();
+      } catch (e) {
+        console.error("Cloud Block: Failed to restore workspace from XML", e);
+      }
+      return;
+    }
+
+    try {
+      // @ts-ignore
+      const event = window.Blockly.Events.fromJson(eventData, this.workspace);
+      event.isCloudBlockSync = true;
+      
+      // @ts-ignore
+      window.Blockly.Events.disable();
+      event.run(true);
+      // @ts-ignore
+      window.Blockly.Events.enable();
+    } catch (e) {
+      console.error("Cloud Block: Failed to run remote Blockly event", e);
+    }
   }
 }
 
 // Initialize the interceptor when this script loads
 new BlocklyInterceptor();
+
