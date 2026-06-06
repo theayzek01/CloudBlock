@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <title>Cloud Block</title>
+  <style>
+    body {
+      width: 320px;
+      margin: 0;
+      padding: 20px;
+      font-family: system-ui, -apple-system, sans-serif;
+      background: linear-gradient(135deg, #f8fafc, #f1f5f9);
+      color: #0f172a;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+    }
+    img {
+      width: 60px;
+      margin-bottom: 15px;
+      border-radius: 12px;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    }
+    h1 {
+      margin: 0 0 10px 0;
+      font-size: 20px;
+      font-weight: 800;
+      background: linear-gradient(135deg, #6366f1, #3b82f6);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    p {
+      margin: 0 0 20px 0;
+      font-size: 14px;
+      color: #64748b;
+      line-height: 1.5;
+    }
+    button {
+      background: linear-gradient(135deg, #6366f1, #3b82f6);
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 999px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      box-shadow: 0 4px 15px rgba(99, 102, 241, 0.4);
+      transition: transform 0.2s;
+    }
+    button:hover {
+      transform: scale(1.05);
+    }
+  </style>
+</head>
+<body>
+  <img src="Cloudblocklogo.png" alt="Cloud Block">
+  <h1>Cloud Block</h1>
+  <p>Dünyanın en gelişmiş Scratch eklentisi aktif! UI menüsü tarayıcıda değil, doğrudan <strong>Scratch projesinin içindedir</strong>.</p>
+  <button id="btn-open">Scratch'i Aç</button>
+
+  <script>
+    document.getElementById('btn-open').addEventListener('click', () => {
+      window.open('https://scratch.mit.edu/projects/editor/', '_blank');
+    });
+  </script>
+</body>
+</html>

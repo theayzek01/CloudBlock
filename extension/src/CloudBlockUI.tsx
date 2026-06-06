@@ -79,7 +79,7 @@ const CloudBlockUI: React.FC = () => {
       ))}
 
       {/* Main UI */}
-      <div style={{ pointerEvents: 'auto', position: 'absolute', top: '16px', left: '16px', zIndex: 1000000 }}>
+      <div style={{ pointerEvents: 'auto', position: 'absolute', top: '70px', left: '20px', zIndex: 1000000 }}>
         <button 
           onClick={() => setIsOpen(!isOpen)}
           style={{
