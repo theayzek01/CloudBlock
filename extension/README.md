@@ -22,13 +22,19 @@
 
 Eklentiyi bilgisayarınıza kurmak oldukça basittir. Herhangi bir kodlama bilgisi gerektirmez:
 
-1.  Bu depoyu (klasörü) bilgisayarınıza indirin (ZIP olarak indirip klasöre çıkartabilirsiniz).
-2.  Google Chrome (veya Edge, Brave, Opera, Vivaldi) tarayıcınızı açın.
-3.  Adres çubuğuna `chrome://extensions/` yazın ve Enter tuşuna basın.
-4.  Açılan sayfanın sağ üst köşesinde bulunan **Geliştirici Modu (Developer Mode)** seçeneğini açık konuma getirin.
-5.  Sol üst köşede beliren **Paketlenmemiş öğe yükle (Load unpacked)** butonuna tıklayın.
-6.  Bilgisayarınıza indirdiğiniz klasörün içerisindeki **`dist`** klasörünü seçin ve onaylayın.
-7.  Eklentiniz artık kuruldu! Tarayıcınızın sağ üstündeki yapboz simgesine tıklayarak **Cloud Block** eklentisini sabitleyebilirsiniz.
+1. **Projeyi klonlayın veya indirin:**
+   Boş bir klasöre şu komutu yazın:
+   ```bash
+   git clone https://github.com/theayzek01/CloudBlock.git
+   ```
+2. **Kurulumu çalıştırın:**
+   Klasörün içindeki **`setup.bat`** dosyasına çift tıklayın. İşlem tamamlandığında terminal size kopyalamanız için bir klasör yolu (Örn: `C:\...\CloudBlock\extension\dist`) verecektir. O yolu kopyalayın.
+3. **Chrome'a ekleyin:**
+   - Chrome'da `chrome://extensions/` adresine gidin.
+   - Sağ üstteki **Geliştirici Modu (Developer Mode)** seçeneğini açın.
+   - Sol üstteki **Paketlenmemiş öğe yükle (Load unpacked)** butonuna tıklayın.
+   - Kopyaladığınız klasör yolunu buraya yapıştırıp onaylayın.
+4. Eklentiniz artık hazır! Scratch'e girdiğinizde otomatik olarak çalışacaktır.
 
 ---
 

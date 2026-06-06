@@ -46,12 +46,16 @@ echo.
 :: 4. Complete instructions
 echo [3/3] Kurulum Tamamlandi!
 echo ==========================================
-echo Eklenti yuklemeye hazir! Simdi tarayiciniza kurun:
+echo Eklenti yuklemeye hazir! Lutfen asagidaki klasor yolunu kopyalayin:
+echo.
+echo %~dp0extension\dist
+echo.
+echo Kopyaladiktan sonra tarayiciniza kurun:
 echo.
 echo 1. Chrome'da chrome://extensions/ adresine gidin.
 echo 2. Sag ustteki "Gelistirici Modu" (Developer Mode) secenegini acin.
 echo 3. Sol ustteki "Paketlenmemis oge yukle" (Load unpacked) butonuna basin.
-echo 4. Klonladiginiz klasordeki "extension/dist" klasorunu secin.
+echo 4. Kopyaladiginiz klasor yolunu buraya yapistirip onaylayin.
 echo ==========================================
 echo.
 pause

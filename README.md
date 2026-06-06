@@ -29,34 +29,30 @@ Piyasadaki diğer eklentilerin en büyük sorunu **sunucu optimizasyonu** ve **a
 
 <br>
 
-## <img src="https://icongr.am/feather/download-cloud.svg?size=28&color=06b6d4" width="24" height="24" style="vertical-align: middle;" alt="Icon" /> Nasıl Kurulur? (Geliştirici Sürümü)
+## <img src="https://icongr.am/feather/download-cloud.svg?size=28&color=06b6d4" width="24" height="24" style="vertical-align: middle;" alt="Icon" /> Nasıl Kurulur? (Kolay Kurulum)
 
-Projeyi kendi bilgisayarınızda derleyip hemen denemek için adımları takip edin:
+Eklentiyi bilgisayarınıza kurmak ve çalıştırmak son derece basittir:
 
-### 1. Backend (Sunucu) Kurulumu
-Gerçek zamanlı eşitlemenin kalbi olan sunucuyu başlatıyoruz:
-```bash
-cd server
-npm install
-node index.js
-```
-> Sunucu varsayılan olarak `http://localhost:3001` portunda çalışmaya başlar.
+1. **Projeyi indirin (Klonlayın):**
+   Boş bir klasör açın, terminalde aşağıdaki komutu çalıştırarak projeyi klonlayın:
+   ```bash
+   git clone https://github.com/theayzek01/CloudBlock.git
+   ```
 
-### 2. Chrome Eklentisini Paketleme
-React ve Vite ile yazdığımız modern eklentimizi tarayıcının anlayacağı dile çeviriyoruz:
-```bash
-cd extension
-npm install
-npm run build
-```
+2. **Kurulumu Başlatın:**
+   Klonladığınız klasörün içinde bulunan **`setup.bat`** dosyasına çift tıklayarak çalıştırın.
+   *Bu işlem gerekli tüm paketleri otomatik olarak yükleyecek ve tarayıcı eklentisini derleyecektir.*
 
-**Tarayıcıya Ekleme:**
-1. Chrome'da `chrome://extensions/` adresine gidin.
-2. Sağ üstten **Geliştirici modunu** aktif edin.
-3. Sol üstteki **Paketlenmemiş öğe yükle** (Load unpacked) butonuna tıklayın.
-4. Projenin içindeki `extension/dist` klasörünü seçin.
+3. **Klasör Yolunu Kopyalayın:**
+   Derleme işlemi bittiğinde terminalin en sonunda size kopyalamanız için bir klasör yolu (Örn: `C:\...\CloudBlock\extension\dist`) gösterecektir. Bu yolu kopyalayın.
 
-Hepsi bu kadar! Artık Scratch'e girdiğinizde sol üstte şık Cloud Block butonunu göreceksiniz.
+4. **Tarayıcıya Yükleyin:**
+   - Google Chrome'da `chrome://extensions/` adresine gidin.
+   - Sağ üst köşeden **Geliştirici modunu (Developer Mode)** aktif edin.
+   - Sol üstteki **Paketlenmemiş öğe yükle (Load unpacked)** butonuna tıklayın.
+   - Kopyaladığınız klasör yolunu buraya yapıştırıp onaylayın.
+
+Hepsi bu kadar! Artık Scratch'e girdiğinizde sol üstte şık Cloud Block panelini göreceksiniz.
 
 <br>
 
