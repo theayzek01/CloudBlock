@@ -1,0 +1,50 @@
+{
+  "rules": {
+    "online_users": {
+      "$userId": {
+        ".read": true,
+        ".write": true
+      }
+    },
+    "user_projects": {
+      "$docId": {
+        ".read": true,
+        ".write": true
+      }
+    },
+    "invitations": {
+      "$inviteId": {
+        ".read": true,
+        ".write": true
+      }
+    },
+    "rooms": {
+      "$roomId": {
+        ".read": true,
+        ".write": true,
+        "cursors": {
+          "$userId": {
+            ".read": true,
+            ".write": true
+          }
+        },
+        "sync": {
+          ".read": true,
+          ".write": true
+        },
+        "messages": {
+          "$messageId": {
+            ".read": true,
+            ".write": true
+          }
+        },
+        "history": {
+          "$checkpointId": {
+            ".read": true,
+            ".write": true
+          }
+        }
+      }
+    }
+  }
+}

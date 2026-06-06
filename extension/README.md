@@ -1,73 +1,41 @@
-# React + TypeScript + Vite
+# ☁️ Cloud Block - Gerçek Zamanlı Scratch İş Birliği Eklentisi
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+**Cloud Block**, Scratch projeleri üzerinde arkadaşlarınızla aynı anda, gerçek zamanlı olarak çalışmanızı sağlayan modern ve ultra premium bir tarayıcı eklentisidir. Tıpkı Google Docs veya Figma'da olduğu gibi, arkadaşlarınızla aynı Scratch projesini açıp canlı olarak kod bloklarını sürükleyebilir, düzenleyebilir, sohbet edebilir ve beraber kod yazabilirsiniz!
 
-Currently, two official plugins are available:
+---
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## ✨ Öne Çıkan Özellikler
 
-## React Compiler
+*   **Canlı Kod Senkronizasyonu:** Sizin veya arkadaşınızın yaptığı tüm blok hareketleri (ekleme, silme, yer değiştirme, değer değiştirme) anında tüm ekranlarda güncellenir.
+*   **Akıcı İmleç Takibi (Smooth Cursor):** Arkadaşlarınızın fare imleçlerinin nerede olduğunu, yumuşak animasyonlarla canlı olarak izleyin.
+*   **Entegre Sohbet (Chat):** Proje penceresinin içindeki "Sohbet" sekmesinden arkadaşlarınızla anlık olarak yazışın.
+*   **Zaman Makinesi (Bulut Yedekleme):** Kodlarınızı tek tıkla buluta yedekleyin. İstediğiniz an geçmiş yedeklere geri dönün.
+*   **Davet & Bildirim Sistemi:** Scratch'in hangi sayfasında olursanız olun, bir arkadaşınız sizi davet ettiğinde ekranın sol altında şık bir davet kartı görünür.
+*   **Eklenti Kısayol Menüsü (Popup):** Tarayıcınızın sağ üstündeki eklenti simgesine tıklayarak gelen davetleri görebilir, tek tıkla davet edilen projeye katılabilir veya yeni bir Scratch editörü açabilirsiniz.
+*   **Bekleyen Davet Sayacı:** Yeni bir davet aldığınızda tarayıcı simgesinde kırmızı bildirim sayısı gösterilir.
+*   **Panel Kilitleme (Kilit Sistemi):** Çalışma panelindeki asma kilit simgesine tıklayarak panelin yanlışlıkla açılmasını veya kapanmasını engelleyebilirsiniz.
+*   **Gece/Gündüz Teması:** Tamamen Scratch estetiğine uygun premium açık ve koyu tema desteği.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+---
 
-## Expanding the ESLint configuration
+## 🛠️ Nasıl Kurulur? (Google Chrome & Chromium Tarayıcılar)
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+Eklentiyi bilgisayarınıza kurmak oldukça basittir. Herhangi bir kodlama bilgisi gerektirmez:
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+1.  Bu depoyu (klasörü) bilgisayarınıza indirin (ZIP olarak indirip klasöre çıkartabilirsiniz).
+2.  Google Chrome (veya Edge, Brave, Opera, Vivaldi) tarayıcınızı açın.
+3.  Adres çubuğuna `chrome://extensions/` yazın ve Enter tuşuna basın.
+4.  Açılan sayfanın sağ üst köşesinde bulunan **Geliştirici Modu (Developer Mode)** seçeneğini açık konuma getirin.
+5.  Sol üst köşede beliren **Paketlenmemiş öğe yükle (Load unpacked)** butonuna tıklayın.
+6.  Bilgisayarınıza indirdiğiniz klasörün içerisindeki **`dist`** klasörünü seçin ve onaylayın.
+7.  Eklentiniz artık kuruldu! Tarayıcınızın sağ üstündeki yapboz simgesine tıklayarak **Cloud Block** eklentisini sabitleyebilirsiniz.
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+---
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+## 🚀 Nasıl Kullanılır?
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
-
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+1.  Herhangi bir Scratch projesini açın veya [Scratch Editörü](https://scratch.mit.edu/projects/editor/) sayfasına gidin.
+2.  Ekranın sol üst köşesinde mavi renkli **Cloud Block** panelini göreceksiniz.
+3.  **Oturum** sekmesindeki **Bağlantıyı Kopyala** butonuna basarak size özel davet linkini kopyalayabilir ve bunu iş birliği yapmak istediğiniz arkadaşlarınıza gönderebilirsiniz.
+4.  Linke tıklayan arkadaşlarınız otomatik olarak hazırlık odasına alınır ve **Katıl** butonuna basarak sizin projenize dahil olurlar.
+5.  Ayrıca çevrimiçi olan diğer kullanıcıları arayarak onlara doğrudan davet gönderebilir, gelen davetleri kabul ederek diğer projelere zıplayabilirsiniz.

@@ -10,7 +10,6 @@
     {
       "matches": ["*://scratch.mit.edu/*"],
       "js": ["content.js"],
-      "css": ["content.css"],
       "run_at": "document_idle"
     }
   ],
@@ -20,6 +19,12 @@
       "matches": ["*://scratch.mit.edu/*"]
     }
   ],
+  "permissions": [
+    "storage"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
   "action": {
     "default_popup": "popup.html",
     "default_icon": {

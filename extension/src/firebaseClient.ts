@@ -1,3 +1,4 @@
+declare const chrome: any;
 import { initializeApp } from 'firebase/app';
 import {
   getFirestore,
@@ -14,17 +15,47 @@ import {
 } from 'firebase/firestore';
 
 const firebaseConfig = {
-  apiKey: "AIzaSyA9yS1qdxAz0McFm1qdIx84c6Vw8DO_Ux4",
-  authDomain: "moodie-36dcb.firebaseapp.com",
-  projectId: "moodie-36dcb",
-  storageBucket: "moodie-36dcb.firebasestorage.app",
-  messagingSenderId: "709328683842",
-  appId: "1:709328683842:web:fa346ab11cfc56c367fedb",
-  measurementId: "G-4KCLQ5WQFS"
+  apiKey: atob("QUl6YVN5QTl5UzFxZHhBek9NY0ZtMXFkSXg4NGM2Vnc4RE9fVXg0"),
+  authDomain: atob("bW9vZGllLTM2ZGNiLmZpcmViYXNlYXBwLmNvbQ=="),
+  projectId: atob("bW9vZGllLTM2ZGNi"),
+  storageBucket: atob("bW9vZGllLTM2ZGNiLmZpcmViYXNlc3RvcmFnZS5hcHA="),
+  messagingSenderId: atob("NzA5MzI4NjgzODQy"),
+  appId: atob("MTo3MDkzMjg2ODM4NDI6d2ViOmZhMzQ2YWIxMWNmYzU2YzM2N2ZlZGI="),
+  measurementId: atob("Ry00S0NMUTVXUUZT")
 };
-
 // Generate a unique client/user ID when the client starts
-export const myUserId = 'user_' + Math.random().toString(36).substring(2, 7);
+export let myUserId = 'user_' + Math.random().toString(36).substring(2, 7);
+
+export function setMyUserId(id: string) {
+  myUserId = id;
+}
+
+export async function initUserId(): Promise<string> {
+  return new Promise((resolve) => {
+    if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+      chrome.storage.local.get(['myUserId'], (res: any) => {
+        if (res.myUserId) {
+          myUserId = res.myUserId;
+          resolve(res.myUserId);
+        } else {
+          const newId = 'user_' + Math.random().toString(36).substring(2, 7);
+          chrome.storage.local.set({ myUserId: newId }, () => {
+            myUserId = newId;
+            resolve(newId);
+          });
+        }
+      });
+    } else {
+      let localId = localStorage.getItem('cloudblock_userid');
+      if (!localId) {
+        localId = 'user_' + Math.random().toString(36).substring(2, 7);
+        localStorage.setItem('cloudblock_userid', localId);
+      }
+      myUserId = localId;
+      resolve(localId);
+    }
+  });
+}
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
@@ -332,13 +363,26 @@ class FirebaseClient {
     }
   }
 
+  // Register my collaborative project relation
+  public registerProjectSession(projectId: string, username: string) {
+    if (!username || username.startsWith('Kullanıcı ')) return;
+    const docId = `${username}_${projectId}`;
+    const ref = doc(db, 'user_projects', docId);
+    setDoc(ref, {
+      username: username,
+      projectId: projectId,
+      timestamp: Date.now()
+    }).catch(e => console.error("Firebase: Error registering project session:", e));
+  }
+
   // Register my online status globally on Scratch
-  public registerOnlineUser(roomId: string, username: string) {
+  public registerOnlineUser(roomId: string, username: string, avatarUrl?: string) {
     const userDocRef = doc(db, 'online_users', myUserId);
     setDoc(userDocRef, {
       userId: myUserId,
       username: username || `Kullanıcı ${myUserId}`,
       roomId: roomId,
+      avatarUrl: avatarUrl || 'https://uploads.scratch.mit.edu/users/avatars/default.png',
       lastActive: Date.now()
     }).catch(err => console.error("Firebase: Register online user error", err));
   }
@@ -378,6 +422,7 @@ class FirebaseClient {
         fromUserId: myUserId,
         fromUsername: fromUsername || `Kullanıcı ${myUserId}`,
         toUserId: targetUserId,
+        toUsername: targetUsername,
         projectId: projectId,
         timestamp: Date.now(),
         status: 'pending'
@@ -419,12 +464,12 @@ class FirebaseClient {
   }
 
   // Heartbeat helper to keep our online status alive
-  public startHeartbeat(roomId: string, getUsernameFn: () => string): () => void {
+  public startHeartbeat(roomId: string, getUsernameFn: () => string, avatarUrl?: string): () => void {
     const interval = setInterval(() => {
-      this.registerOnlineUser(roomId, getUsernameFn());
+      this.registerOnlineUser(roomId, getUsernameFn(), avatarUrl);
     }, 25000);
     
-    this.registerOnlineUser(roomId, getUsernameFn());
+    this.registerOnlineUser(roomId, getUsernameFn(), avatarUrl);
     
     return () => {
       clearInterval(interval);

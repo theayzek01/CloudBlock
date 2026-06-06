@@ -1,8 +1,9 @@
-import { firebaseClient } from './firebaseClient';
+import { firebaseClient, myUserId } from './firebaseClient';
 
 export class BlocklyInterceptor {
   private workspace: any = null;
   private roomId: string = 'default_room';
+  private highlightedBlocks: { [userId: string]: string } = {};
 
   constructor() {
     this.init();
@@ -38,6 +39,19 @@ export class BlocklyInterceptor {
     this.roomId = match ? match[1] : 'default_room';
 
     this.workspace.addChangeListener((event: any) => {
+      // Handle block selection and dragging highlight
+      if (event.type === 'ui' && event.element === 'selected') {
+        try {
+          firebaseClient.emitBlockEvent(this.roomId, {
+            type: 'block_select',
+            blockId: event.newValue, // Selected block ID, or null
+            userId: myUserId
+          });
+        } catch (e) {
+          console.error("Cloud Block: Failed to emit selection event", e);
+        }
+      }
+
       // Ignore UI events (like clicking) that don't change logic
       if (event.type === 'ui') return;
 
@@ -59,6 +73,39 @@ export class BlocklyInterceptor {
   public applyRemoteEvent(eventData: any) {
     if (!this.workspace) return;
     
+    // Handle block selection highlight from other users
+    if (eventData && eventData.type === 'block_select') {
+      const { userId, blockId } = eventData;
+      
+      // 1. Clear previous highlight for this user
+      const oldBlockId = this.highlightedBlocks[userId];
+      if (oldBlockId) {
+        const oldBlock = this.workspace.getBlockById(oldBlockId);
+        if (oldBlock) {
+          const oldSvg = oldBlock.getSvgRoot();
+          if (oldSvg) {
+            oldSvg.style.filter = '';
+          }
+        }
+        delete this.highlightedBlocks[userId];
+      }
+
+      // 2. Apply new highlight
+      if (blockId) {
+        const block = this.workspace.getBlockById(blockId);
+        if (block) {
+          const svgRoot = block.getSvgRoot();
+          if (svgRoot) {
+            const color = `hsl(${userId.charCodeAt(0) * 55 % 360}, 85%, 60%)`;
+            svgRoot.style.filter = `drop-shadow(0px 0px 8px ${color})`;
+            svgRoot.style.transition = 'filter 0.2s ease';
+            this.highlightedBlocks[userId] = blockId;
+          }
+        }
+      }
+      return;
+    }
+
     // Handle workspace restoration from checkpoint
     if (eventData && eventData.type === 'restore_workspace') {
       console.log("Cloud Block: Restoring workspace from remote checkpoint");

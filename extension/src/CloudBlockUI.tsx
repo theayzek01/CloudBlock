@@ -1,6 +1,8 @@
+declare const chrome: any;
 import React, { useState, useEffect, useRef } from 'react';
-import { firebaseClient, myUserId } from './firebaseClient';
+import { firebaseClient, myUserId, db } from './firebaseClient';
 import { SmoothCursor } from './SmoothCursor';
+import { collection, query, where, onSnapshot } from 'firebase/firestore';
 
 interface RemoteCursor {
   x: number;
@@ -64,17 +66,23 @@ function useDraggable(isOpen: boolean) {
     };
   }, [isDragging, offset, isOpen]);
 
-  // Adjust panel position on expand/collapse to prevent screen overflow
+  // Adjust panel position on expand/collapse and window resize to prevent screen overflow
   useEffect(() => {
-    const panelWidth = isOpen ? 325 : 120;
-    const panelHeight = isOpen ? 436 : 48;
-    const maxX = window.innerWidth - panelWidth;
-    const maxY = window.innerHeight - panelHeight;
+    const handleResize = () => {
+      const panelWidth = isOpen ? 325 : 120;
+      const panelHeight = isOpen ? 436 : 48;
+      const maxX = window.innerWidth - panelWidth;
+      const maxY = window.innerHeight - panelHeight;
 
-    setPosition(prev => ({
-      x: Math.min(Math.max(0, prev.x), maxX),
-      y: Math.min(Math.max(0, prev.y), maxY)
-    }));
+      setPosition(prev => ({
+        x: Math.min(Math.max(0, prev.x), maxX),
+        y: Math.min(Math.max(0, prev.y), maxY)
+      }));
+    };
+
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
   }, [isOpen]);
 
   return { position, handleMouseDown, isDragging };
@@ -100,6 +108,21 @@ const CloudBlockUI: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeInvite, setActiveInvite] = useState<any>(null);
   const [invitedUsers, setInvitedUsers] = useState<{ [userId: string]: boolean }>({});
+  
+  // Scratch profile search states
+  const [apiUser, setApiUser] = useState<any>(null);
+  const [apiLoading, setApiLoading] = useState(false);
+  const [myAvatarUrl, setMyAvatarUrl] = useState('https://uploads.scratch.mit.edu/users/avatars/default.png');
+
+  // Panel Lock state
+  const [isLocked, setIsLocked] = useState(() => localStorage.getItem('cloudblock-locked') === 'true');
+
+  const toggleLock = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const newState = !isLocked;
+    setIsLocked(newState);
+    localStorage.setItem('cloudblock-locked', String(newState));
+  };
 
   // Theme state
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
@@ -146,12 +169,28 @@ const CloudBlockUI: React.FC = () => {
     return profileNameEl ? profileNameEl.textContent?.trim() || '' : '';
   };
 
-  // Setup username check
+  // Setup username check and Scratch API profile fetching
   useEffect(() => {
-    const checkUsername = () => {
+    const checkUsername = async () => {
       const name = getScratchUsernameFromDom();
       if (name) {
         setMyScratchUsername(name);
+        if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+          chrome.storage.local.set({ myScratchUsername: name });
+        }
+        try {
+          const res = await fetch(`https://api.scratch.mit.edu/users/${name}`);
+          if (res.ok) {
+            const data = await res.json();
+            const avatar = data.profile.images['90x90'] || 'https://uploads.scratch.mit.edu/users/avatars/default.png';
+            setMyAvatarUrl(avatar);
+            if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+              chrome.storage.local.set({ myScratchAvatarUrl: avatar });
+            }
+          }
+        } catch (e) {
+          console.error("Error fetching my Scratch profile:", e);
+        }
       } else {
         setMyScratchUsername(`Kullanıcı ${myUserId.substring(0, 4)}`);
       }
@@ -165,12 +204,13 @@ const CloudBlockUI: React.FC = () => {
   useEffect(() => {
     const cleanupHeartbeat = firebaseClient.startHeartbeat(
       isEditor ? roomId : 'home',
-      () => myScratchUsername || `Kullanıcı ${myUserId.substring(0, 4)}`
+      () => myScratchUsername || `Kullanıcı ${myUserId.substring(0, 4)}`,
+      myAvatarUrl
     );
     return () => {
       cleanupHeartbeat();
     };
-  }, [roomId, myScratchUsername, isEditor]);
+  }, [roomId, myScratchUsername, myAvatarUrl, isEditor]);
 
   // Listen to other online users
   useEffect(() => {
@@ -180,13 +220,108 @@ const CloudBlockUI: React.FC = () => {
     return unsub;
   }, []);
 
-  // Listen for incoming invitations sent to us
+  // Listen to pending invitations and update the extension icon badge (checks both myUserId and myScratchUsername)
   useEffect(() => {
-    const unsub = firebaseClient.listenInvitations((invite) => {
-      setActiveInvite(invite);
+    if (!myUserId) return;
+    const invitationsCol = collection(db, 'invitations');
+
+    const handleInvites = (snapshot: any) => {
+      const list: any[] = [];
+      const cutoff = Date.now() - 300000; // last 5 minutes
+      snapshot.forEach((docSnap: any) => {
+        const data = docSnap.data();
+        if (data.status === 'pending' && data.timestamp >= cutoff) {
+          list.push(data);
+        }
+      });
+      return list;
+    };
+
+    let list1: any[] = [];
+    let list2: any[] = [];
+
+    const updateInvites = () => {
+      const merged = [...list1, ...list2].filter((item, index, self) => 
+        self.findIndex(t => t.id === item.id) === index
+      );
+      
+      if (merged.length > 0) {
+        merged.sort((a, b) => b.timestamp - a.timestamp);
+        setActiveInvite(merged[0]);
+      } else {
+        setActiveInvite(null);
+      }
+
+      if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
+        chrome.runtime.sendMessage({
+          action: 'set_badge',
+          text: merged.length > 0 ? merged.length.toString() : ''
+        });
+      }
+    };
+
+    const q1 = query(invitationsCol, where('toUserId', '==', myUserId));
+    const unsub1 = onSnapshot(q1, (snap) => {
+      list1 = handleInvites(snap);
+      updateInvites();
+    }, (err) => {
+      console.error("Content script invitation list1 error:", err);
     });
-    return unsub;
-  }, []);
+
+    let unsub2 = () => {};
+    if (myScratchUsername && !myScratchUsername.startsWith('Kullanıcı ')) {
+      const q2 = query(invitationsCol, where('toUsername', '==', myScratchUsername));
+      unsub2 = onSnapshot(q2, (snap) => {
+        list2 = handleInvites(snap);
+        updateInvites();
+      }, (err) => {
+        console.error("Content script invitation list2 error:", err);
+      });
+    }
+
+    return () => {
+      unsub1();
+      unsub2();
+    };
+  }, [myUserId, myScratchUsername]);
+
+  // Scratch API profile search query effect
+  useEffect(() => {
+    if (!searchQuery.trim() || searchQuery.trim().length < 2) {
+      setApiUser(null);
+      return;
+    }
+
+    const controller = new AbortController();
+    const timer = setTimeout(async () => {
+      setApiLoading(true);
+      try {
+        const res = await fetch(`https://api.scratch.mit.edu/users/${searchQuery.trim()}`, { signal: controller.signal });
+        if (res.ok) {
+          const data = await res.json();
+          setApiUser({
+            userId: String(data.id),
+            username: data.username,
+            avatarUrl: data.profile.images['90x90'] || data.profile.images['60x60'] || 'https://uploads.scratch.mit.edu/users/avatars/default.png'
+          });
+        } else {
+          setApiUser(null);
+        }
+      } catch (err: any) {
+        if (err.name !== 'AbortError') {
+          console.error("Scratch API fetch error:", err);
+          setApiUser(null);
+        }
+      } finally {
+        setApiLoading(false);
+      }
+    }, 400);
+
+    return () => {
+      controller.abort();
+      clearTimeout(timer);
+    };
+  }, [searchQuery]);
 
   // Inject animations and responsive mobile styles into document
   useEffect(() => {
@@ -209,6 +344,9 @@ const CloudBlockUI: React.FC = () => {
           from { transform: translateY(40px); opacity: 0; }
           to { transform: translateY(0); opacity: 1; }
         }
+        @keyframes cbSpin {
+          to { transform: rotate(360deg); }
+        }
       `;
       document.head.appendChild(style);
     }
@@ -228,7 +366,32 @@ const CloudBlockUI: React.FC = () => {
             display: none !important;
           }
           
-          /* Toggle visibility of Blockly editor and Scratch canvas stage */
+          /* Switch layouts to column flex on mobile */
+          [class*="gui_body-wrapper"] {
+            display: flex !important;
+            flex-direction: column !important;
+            width: 100% !important;
+            height: calc(100vh - 48px) !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            overflow: hidden !important;
+          }
+          
+          [class*="gui_flex-row"] {
+            display: flex !important;
+            flex-direction: row !important;
+            flex: 1 !important;
+            width: 100% !important;
+            height: 100% !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            overflow: hidden !important;
+          }
+
+          /* Default View (Code View): Hide stage wrapper components */
+          body:not(.cb-show-stage) [class*="gui_stage-and-target-wrapper"] {
+            display: none !important;
+          }
           body:not(.cb-show-stage) [class*="stage-wrapper_stage-wrapper"] {
             display: none !important;
           }
@@ -236,49 +399,82 @@ const CloudBlockUI: React.FC = () => {
             display: none !important;
           }
           
+          /* Code View: Workspace takes full space */
+          body:not(.cb-show-stage) [class*="gui_workspace-wrapper"],
+          body:not(.cb-show-stage) [class*="gui_workspace_"] {
+            display: flex !important;
+            flex-direction: column !important;
+            flex: 1 !important;
+            width: 100% !important;
+            height: 100% !important;
+          }
+          
+          /* Stage View: Hide editor workspace, show stage & target wrapper */
           body.cb-show-stage [class*="gui_workspace-wrapper"],
+          body.cb-show-stage [class*="gui_workspace_"],
           body.cb-show-stage [class*="scratchCategoryMenu"],
           body.cb-show-stage [class*="blocklyToolboxDiv"] {
             display: none !important;
           }
           
-          /* Responsive UI stack layouts */
-          [class*="gui_body-wrapper"],
-          [class*="gui_flex-row"],
-          [class*="gui_stage-and-target-wrapper"] {
-            width: 100% !important;
-            height: calc(100vh - 48px) !important;
+          body.cb-show-stage [class*="gui_stage-and-target-wrapper"] {
+            display: flex !important;
             flex-direction: column !important;
-            display: block !important;
+            flex: 1 !important;
+            width: 100% !important;
+            height: 100% !important;
             padding: 0 !important;
             margin: 0 !important;
           }
 
           [class*="stage-wrapper_stage-wrapper"] {
             width: 100% !important;
-            height: 100% !important;
+            height: auto !important;
             max-width: 100% !important;
             display: flex !important;
             flex-direction: column !important;
             align-items: center !important;
             justify-content: center !important;
+            padding: 10px 0 !important;
           }
           
-          /* Auto scale Canvas to fit mobile width */
+          [class*="sprite-selector_sprite-selector"] {
+            width: 100% !important;
+            flex: 1 !important;
+            height: auto !important;
+            overflow-y: auto !important;
+          }
+          
+          /* Scale Scratch Stage canvas to fit mobile screen width */
           [class*="stage_stage"] {
-            transform: scale(0.8) !important;
+            transform: scale(0.75) !important;
             transform-origin: center center !important;
             margin: 0 auto !important;
           }
-
+          
+          /* Scale default blockly workspace SVG */
           .blocklySvg {
             width: 100% !important;
             height: 100% !important;
           }
           
+          /* Compact Categories sidebar */
           [class*="scratchCategoryMenu"],
           [class*="blocklyToolboxDiv"] {
             width: 48px !important;
+          }
+          
+          /* Hide text labels in category list on mobile to save space */
+          [class*="scratchCategoryMenuItemLabel"] {
+            display: none !important;
+          }
+          
+          [class*="scratchCategoryMenuItem"] {
+            padding: 6px 0 !important;
+            height: auto !important;
+            display: flex !important;
+            justify-content: center !important;
+            align-items: center !important;
           }
         }
       `;
@@ -295,6 +491,14 @@ const CloudBlockUI: React.FC = () => {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  // Trigger window resize event on layout mode changes so Blockly updates its SVG layout calculations
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      window.dispatchEvent(new Event('resize'));
+    }, 150);
+    return () => clearTimeout(timer);
+  }, [isMobile, mobileShowStage]);
+
   // Fetch active users once when in Lobby
   useEffect(() => {
     if (inLobby) {
@@ -310,6 +514,9 @@ const CloudBlockUI: React.FC = () => {
 
     // Connect to Firebase
     firebaseClient.connect(roomId);
+
+    // Register project session relation
+    firebaseClient.registerProjectSession(roomId, myScratchUsername);
 
     // Update cursor position if cursor sharing is enabled
     const handleMouseMove = (e: MouseEvent) => {
@@ -339,7 +546,7 @@ const CloudBlockUI: React.FC = () => {
       window.removeEventListener('mousemove', handleMouseMove);
       firebaseClient.disconnect();
     };
-  }, [roomId, inLobby, shareCursor, isEditor]);
+  }, [roomId, inLobby, shareCursor, isEditor, myScratchUsername]);
 
   useEffect(() => {
     if (chatScrollRef.current) {
@@ -367,6 +574,7 @@ const CloudBlockUI: React.FC = () => {
   const joinOturum = () => {
     setInLobby(false);
     window.location.hash = ''; // Clear hash from the URL
+    firebaseClient.registerProjectSession(roomId, myScratchUsername);
   };
 
   const toggleTheme = (e: React.MouseEvent) => {
@@ -885,50 +1093,87 @@ const CloudBlockUI: React.FC = () => {
       ))}
 
       {/* Main UI Container */}
-      <div style={{
-        pointerEvents: 'auto',
-        position: 'absolute',
-        top: position.y,
-        left: position.x,
-        zIndex: 1000000,
-        fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
-      }}>
+      <div 
+        onMouseDown={!isOpen ? handleMouseDown : undefined}
+        onClick={!isOpen ? (e) => {
+          if ((e.target as HTMLElement).closest('.cb-lock-btn') || (e.target as HTMLElement).closest('button')) return;
+          if (isLocked) return;
+          if (!isDragging) setIsOpen(true);
+        } : undefined}
+        style={{
+          pointerEvents: 'auto',
+          position: 'absolute',
+          top: position.y,
+          left: position.x,
+          zIndex: 1000000,
+          fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+          
+          // Unified Card container styles
+          width: isOpen ? '325px' : '120px',
+          height: isOpen ? '436px' : '48px',
+          background: isOpen
+            ? t.bg
+            : (theme === 'dark' ? 'rgba(15, 23, 42, 0.75)' : 'rgba(255, 255, 255, 0.85)'),
+          backdropFilter: 'blur(20px)',
+          WebkitBackdropFilter: 'blur(20px)',
+          border: `1px solid ${t.border}`,
+          borderRadius: isOpen ? '24px' : '999px',
+          boxShadow: t.shadow,
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden',
+          transition: 'width 0.3s cubic-bezier(0.16, 1, 0.3, 1), height 0.3s cubic-bezier(0.16, 1, 0.3, 1), border-radius 0.3s cubic-bezier(0.16, 1, 0.3, 1), background 0.3s, box-shadow 0.3s',
+          cursor: !isOpen ? (isDragging ? 'grabbing' : 'grab') : 'default',
+          opacity: !isOpen ? 0.85 : 1
+        }}
+        onMouseEnter={!isOpen ? (e) => {
+          e.currentTarget.style.opacity = '1';
+          e.currentTarget.style.transform = 'scale(1.03)';
+        } : undefined}
+        onMouseLeave={!isOpen ? (e) => {
+          e.currentTarget.style.opacity = '0.85';
+          e.currentTarget.style.transform = 'scale(1)';
+        } : undefined}
+      >
         
         {/* Toggle Button / Header (MINIMIZED COMPACT MODE OR FULL HEADER) */}
         {!isOpen ? (
-          <div 
-            onMouseDown={handleMouseDown}
-            onClick={() => { if (!isDragging) setIsOpen(true); }}
-            style={{
-              display: 'flex', 
-              alignItems: 'center', 
-              justifyContent: 'center',
-              gap: '8px', 
-              padding: '10px 14px',
-              background: theme === 'dark' ? 'rgba(15, 23, 42, 0.5)' : 'rgba(255, 255, 255, 0.75)', 
-              backdropFilter: 'blur(12px)', 
-              WebkitBackdropFilter: 'blur(12px)',
-              border: `1px solid ${t.border}`, 
-              borderRadius: '999px',
-              boxShadow: t.shadow, 
-              cursor: isDragging ? 'grabbing' : 'grab',
-              color: t.textPrimary, 
-              fontWeight: 600, 
-              transition: 'all 0.3s ease', 
-              width: '120px', 
-              boxSizing: 'border-box',
-              userSelect: 'none',
-              opacity: 0.65
-            }}
-            onMouseEnter={e => {
-              e.currentTarget.style.opacity = '1';
-              e.currentTarget.style.transform = 'scale(1.03)';
-            }}
-            onMouseLeave={e => {
-              e.currentTarget.style.opacity = '0.65';
-              e.currentTarget.style.transform = 'scale(1)';
-            }}
-          >
+          <div style={{
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: 'center',
+            gap: '8px', 
+            padding: '10px 14px',
+            color: t.textPrimary, 
+            fontWeight: 600, 
+            width: '100%', 
+            height: '100%',
+            boxSizing: 'border-box',
+            userSelect: 'none'
+          }}>
+            {/* Padlock button on compact pill */}
+            <button
+              className="cb-lock-btn"
+              onClick={toggleLock}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: isLocked ? t.activeTab : t.textSecondary,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '4px',
+                borderRadius: '50%',
+                transition: 'background 0.2s, color 0.2s'
+              }}
+              onMouseOver={e => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)'}
+              onMouseOut={e => e.currentTarget.style.background = 'transparent'}
+            >
+              <span className="material-symbols-outlined" style={{ fontSize: '16px', transform: isLocked ? 'rotate(360deg)' : 'none', transition: 'transform 0.3s cubic-bezier(0.16, 1, 0.3, 1)' }}>
+                {isLocked ? 'lock' : 'lock_open'}
+              </span>
+            </button>
             <span className="material-symbols-outlined" style={{ color: t.activeTab, fontSize: '18px' }}>
               cloud
             </span>
@@ -951,23 +1196,22 @@ const CloudBlockUI: React.FC = () => {
           /* Normal Expanded Header */
           <div 
             onMouseDown={handleMouseDown}
-            onClick={() => { if (!isDragging) setIsOpen(false); }}
+            onClick={(e) => {
+              if ((e.target as HTMLElement).closest('.cb-lock-btn') || (e.target as HTMLElement).closest('button')) return;
+              if (isLocked) return;
+              if (!isDragging) setIsOpen(false);
+            }}
             style={{
               display: 'flex', 
               alignItems: 'center', 
               gap: '12px', 
               padding: '12px 18px',
               background: t.headerBg, 
-              backdropFilter: 'blur(20px)', 
-              WebkitBackdropFilter: 'blur(20px)',
-              border: `1px solid ${t.border}`, 
-              borderRadius: isOpen ? '24px 24px 0 0' : '24px',
-              boxShadow: t.shadow, 
-              cursor: isDragging ? 'grabbing' : 'grab',
+              borderBottom: `1px solid ${t.border}`,
               color: t.textPrimary, 
               fontWeight: 600, 
-              transition: 'border-radius 0.2s, background 0.3s, color 0.3s', 
-              width: '325px', 
+              cursor: isDragging ? 'grabbing' : 'grab',
+              width: '100%', 
               boxSizing: 'border-box',
               userSelect: 'none'
             }}
@@ -997,6 +1241,30 @@ const CloudBlockUI: React.FC = () => {
               <span className="material-symbols-outlined" style={{ fontSize: '12px' }}>group</span>
               {Object.keys(remoteCursors).length + 1}
             </span>
+
+            {/* Lock Button (Padlock) */}
+            <button
+              className="cb-lock-btn"
+              onClick={toggleLock}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: isLocked ? t.activeTab : t.textSecondary,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '4px',
+                borderRadius: '50%',
+                transition: 'background 0.2s, color 0.2s, transform 0.2s'
+              }}
+              onMouseOver={e => e.currentTarget.style.background = t.border}
+              onMouseOut={e => e.currentTarget.style.background = 'transparent'}
+            >
+              <span className="material-symbols-outlined" style={{ fontSize: '18px', transform: isLocked ? 'rotate(360deg)' : 'none', transition: 'transform 0.3s cubic-bezier(0.16, 1, 0.3, 1)' }}>
+                {isLocked ? 'lock' : 'lock_open'}
+              </span>
+            </button>
 
             {/* Theme Toggle Button */}
             <button
@@ -1039,20 +1307,10 @@ const CloudBlockUI: React.FC = () => {
         {/* Panel Body */}
         {isOpen && (
           <div style={{
-            width: '325px', 
-            height: '380px',
-            background: t.bg, 
-            backdropFilter: 'blur(30px)', 
-            WebkitBackdropFilter: 'blur(30px)',
-            border: `1px solid ${t.border}`, 
-            borderTop: 'none', 
-            borderRadius: '0 0 24px 24px',
-            boxShadow: t.shadow, 
-            boxSizing: 'border-box',
+            flex: 1,
             display: 'flex', 
             flexDirection: 'column', 
-            overflow: 'hidden',
-            transition: 'background 0.3s, border-color 0.3s'
+            overflow: 'hidden'
           }}>
             
             {/* Material Tabs */}
@@ -1168,15 +1426,39 @@ const CloudBlockUI: React.FC = () => {
 
                   {/* User List */}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', flex: 1, overflowY: 'auto' }}>
-                    
-                    {/* Search Results / Global Online Users */}
-                    {searchQuery.trim() !== '' && (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '8px' }}>
-                        <div style={{ fontSize: '10px', fontWeight: 700, color: t.textSecondary, paddingLeft: '4px' }}>Arama Sonuçları</div>
-                        {filteredUsers.length === 0 ? (
-                          <div style={{ fontSize: '11px', color: t.textSecondary, padding: '4px 8px' }}>Kullanıcı bulunamadı.</div>
-                        ) : (
-                          filteredUsers.map(user => (
+                    {/* Search Results / Global Online Users (Always visible by default, filtered if query exists) */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '8px' }}>
+                      <div style={{ fontSize: '10px', fontWeight: 700, color: t.textSecondary, paddingLeft: '4px' }}>
+                        {searchQuery.trim() !== '' ? 'Arama Sonuçları' : 'Davet Edilebilecek Kişiler'}
+                      </div>
+                      
+                      {apiLoading && (
+                        <div style={{ fontSize: '11px', color: t.textSecondary, padding: '8px 12px', background: t.cardBg, borderRadius: '12px', border: `1px solid ${t.border}`, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <div style={{ width: '12px', height: '12px', borderRadius: '50%', border: '2px solid rgba(56, 189, 248, 0.2)', borderTopColor: '#38bdf8', animation: 'cbSpin 0.8s linear infinite' }}></div>
+                          Scratch API'de aranıyor...
+                        </div>
+                      )}
+                      
+                      {!apiLoading && searchQuery.trim() !== '' && filteredUsers.length === 0 && !apiUser && (
+                        <div style={{ fontSize: '11px', color: t.textSecondary, padding: '8px 12px', background: t.cardBg, borderRadius: '12px', border: `1px solid ${t.border}` }}>
+                          Kullanıcı bulunamadı.
+                        </div>
+                      )}
+
+                      {/* Render local matching online users and Scratch API search user */}
+                      {(() => {
+                        const displayUsers = [...filteredUsers];
+                        
+                        // Append API search user if found and not already in online users
+                        if (apiUser && !displayUsers.some(u => u.username.toLowerCase() === apiUser.username.toLowerCase())) {
+                          displayUsers.push(apiUser);
+                        }
+
+                        return displayUsers.map(user => {
+                          const isApiFallback = !user.roomId;
+                          const userAvatar = user.avatarUrl || 'https://uploads.scratch.mit.edu/users/avatars/default.png';
+                          
+                          return (
                             <div key={user.userId} style={{ 
                               display: 'flex', 
                               alignItems: 'center', 
@@ -1186,13 +1468,26 @@ const CloudBlockUI: React.FC = () => {
                               borderRadius: '12px',
                               border: `1px solid ${t.border}`
                             }}>
-                              <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: `hsl(${user.userId.charCodeAt(0) * 55 % 360}, 85%, 60%)` }}></div>
+                              <img 
+                                src={userAvatar}
+                                alt=""
+                                style={{
+                                  width: '24px',
+                                  height: '24px',
+                                  borderRadius: '50%',
+                                  objectFit: 'cover',
+                                  border: `1.5px solid ${isApiFallback ? t.border : '#34d399'}`
+                                }}
+                                onError={e => {
+                                  e.currentTarget.src = 'https://uploads.scratch.mit.edu/users/avatars/default.png';
+                                }}
+                              />
                               <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, flex: 1 }}>
                                 <span style={{ fontSize: '12px', color: t.textPrimary, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                   {user.username}
                                 </span>
                                 <span style={{ fontSize: '9px', color: t.textSecondary }}>
-                                  {user.roomId === 'home' ? 'Ana Menüde' : 'Editörde'}
+                                  {isApiFallback ? 'Scratch Profili' : (user.roomId === 'home' ? 'Ana Menüde' : 'Editörde')}
                                 </span>
                               </div>
                               <button
@@ -1219,13 +1514,13 @@ const CloudBlockUI: React.FC = () => {
                                 {invitedUsers[user.userId] ? 'Davet Gitti' : 'Davet Et'}
                               </button>
                             </div>
-                          ))
-                        )}
-                      </div>
-                    )}
+                          );
+                        });
+                      })()}
+                    </div>
 
                     {/* Room Members */}
-                    <div style={{ fontSize: '10px', fontWeight: 700, color: t.textSecondary, paddingLeft: '4px', marginTop: searchQuery.trim() !== '' ? '8px' : '0' }}>Odadaki Kişiler</div>
+                    <div style={{ fontSize: '10px', fontWeight: 700, color: t.textSecondary, paddingLeft: '4px', marginTop: '8px' }}>Odadaki Kişiler</div>
                     <div style={{ 
                       display: 'flex', 
                       alignItems: 'center', 
@@ -1235,25 +1530,41 @@ const CloudBlockUI: React.FC = () => {
                       borderRadius: '12px',
                       border: `1px solid ${t.border}`
                     }}>
-                      <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: myColor, boxShadow: `0 0 6px ${myColor}` }}></div>
+                      <img 
+                        src={myAvatarUrl} 
+                        alt="" 
+                        style={{ width: '24px', height: '24px', borderRadius: '50%', objectFit: 'cover', border: `1.5px solid ${myColor}` }} 
+                        onError={e => { e.currentTarget.src = 'https://uploads.scratch.mit.edu/users/avatars/default.png'; }}
+                      />
                       <span style={{ fontSize: '12px', color: t.textPrimary, fontWeight: 600 }}>{myScratchUsername} (Sen)</span>
-                      <span style={{ marginLeft: 'auto', fontSize: '10px', color: t.textSecondary }}>#{myUserId}</span>
+                      <span style={{ marginLeft: 'auto', fontSize: '10px', color: t.textSecondary }}>#{myUserId.substring(0, 5)}</span>
                     </div>
-                    {Object.entries(remoteCursors).map(([id, cursor]) => (
-                      <div key={id} style={{ 
-                        display: 'flex', 
-                        alignItems: 'center', 
-                        gap: '10px', 
-                        padding: '8px 12px', 
-                        background: t.cardBg, 
-                        borderRadius: '12px',
-                        border: `1px solid ${t.border}`
-                      }}>
-                        <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: cursor.color, boxShadow: `0 0 6px ${cursor.color}` }}></div>
-                        <span style={{ fontSize: '12px', color: t.textPrimary }}>Kullanıcı {id.substring(0, 4)}</span>
-                        <span style={{ marginLeft: 'auto', fontSize: '10px', color: t.textSecondary }}>#{id}</span>
-                      </div>
-                    ))}
+                    {Object.entries(remoteCursors).map(([id, cursor]) => {
+                      const matchingOnlineUser = onlineUsers.find(u => u.userId === id);
+                      const avatar = matchingOnlineUser?.avatarUrl || 'https://uploads.scratch.mit.edu/users/avatars/default.png';
+                      const name = matchingOnlineUser?.username || `Kullanıcı ${id.substring(0, 4)}`;
+
+                      return (
+                        <div key={id} style={{ 
+                          display: 'flex', 
+                          alignItems: 'center', 
+                          gap: '10px', 
+                          padding: '8px 12px', 
+                          background: t.cardBg, 
+                          borderRadius: '12px',
+                          border: `1px solid ${t.border}`
+                        }}>
+                          <img 
+                            src={avatar} 
+                            alt="" 
+                            style={{ width: '24px', height: '24px', borderRadius: '50%', objectFit: 'cover', border: `1.5px solid ${cursor.color}` }} 
+                            onError={e => { e.currentTarget.src = 'https://uploads.scratch.mit.edu/users/avatars/default.png'; }}
+                          />
+                          <span style={{ fontSize: '12px', color: t.textPrimary }}>{name}</span>
+                          <span style={{ marginLeft: 'auto', fontSize: '10px', color: t.textSecondary }}>#{id.substring(0, 5)}</span>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -1269,56 +1580,42 @@ const CloudBlockUI: React.FC = () => {
                       overflowY: 'auto', 
                       display: 'flex', 
                       flexDirection: 'column', 
-                      gap: '10px', 
-                      paddingBottom: '12px' 
+                      gap: '8px',
+                      marginBottom: '10px',
+                      paddingRight: '4px'
                     }}
                   >
                     {messages.length === 0 ? (
-                      <div style={{ 
-                        margin: 'auto', 
-                        color: t.textSecondary, 
-                        fontSize: '12px', 
-                        textAlign: 'center',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        alignItems: 'center',
-                        gap: '6px'
-                      }}>
-                        <span className="material-symbols-outlined" style={{ fontSize: '28px', color: t.textSecondary }}>forum</span>
-                        Sohbet geçmişi boş.
+                      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyItems: 'center', color: t.textSecondary, gap: '8px', justifyContent: 'center' }}>
+                        <span className="material-symbols-outlined" style={{ fontSize: '28px' }}>chat_bubble_outline</span>
+                        <span style={{ fontSize: '11px' }}>Sohbet başlatın!</span>
                       </div>
                     ) : (
-                      messages.map(msg => {
+                      messages.map((msg) => {
                         const isMe = msg.userId === myUserId;
                         return (
                           <div 
                             key={msg.id} 
                             style={{ 
-                              display: 'flex', 
-                              flexDirection: 'column', 
-                              alignItems: isMe ? 'flex-end' : 'flex-start' 
+                              alignSelf: isMe ? 'flex-end' : 'flex-start',
+                              maxWidth: '80%',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              alignItems: isMe ? 'flex-end' : 'flex-start'
                             }}
                           >
-                            <span style={{ 
-                              fontSize: '10px', 
-                              color: msg.color, 
-                              marginBottom: '2px', 
-                              fontWeight: 600,
-                              marginRight: isMe ? '4px' : '0',
-                              marginLeft: isMe ? '0' : '4px'
-                            }}>
+                            <span style={{ fontSize: '8px', color: t.textSecondary, marginBottom: '2px', padding: '0 4px' }}>
                               {isMe ? 'Sen' : `Kullanıcı ${msg.userId.substring(0, 4)}`}
                             </span>
-                            <div style={{ 
+                            <div style={{
+                              padding: '8px 12px',
+                              borderRadius: isMe ? '16px 16px 2px 16px' : '16px 16px 16px 2px',
                               background: isMe ? t.chatMeBg : t.chatOtherBg,
-                              color: isMe ? '#ffffff' : t.textPrimary, 
-                              padding: '8px 14px', 
-                              borderRadius: isMe ? '16px 16px 2px 16px' : '16px 16px 16px 2px', 
-                              fontSize: '13px', 
-                              maxWidth: '85%', 
+                              color: isMe ? '#ffffff' : t.textPrimary,
+                              fontSize: '11px',
+                              lineHeight: 1.4,
                               wordBreak: 'break-word',
-                              boxShadow: '0 2px 8px rgba(0,0,0,0.05)',
-                              border: isMe ? 'none' : `1px solid ${t.border}`
+                              boxShadow: isMe ? '0 2px 8px rgba(2, 132, 199, 0.15)' : 'none'
                             }}>
                               {msg.message}
                             </div>
@@ -1328,108 +1625,89 @@ const CloudBlockUI: React.FC = () => {
                     )}
                   </div>
 
-                  {/* Input form */}
+                  {/* Input area */}
                   <form 
-                    onSubmit={sendChatMessage} 
-                    style={{ 
-                      display: 'flex', 
-                      gap: '8px', 
-                      marginTop: 'auto',
-                      borderTop: `1px solid ${t.border}`,
-                      paddingTop: '8px'
-                    }}
+                    onSubmit={sendChatMessage}
+                    style={{ display: 'flex', gap: '6px' }}
                   >
                     <input 
-                      type="text" 
-                      value={chatInput} 
+                      type="text"
+                      value={chatInput}
                       onChange={e => setChatInput(e.target.value)}
-                      placeholder="Mesajınızı yazın..." 
-                      style={{ 
-                        flex: 1, 
-                        padding: '10px 16px', 
-                        borderRadius: '100px', 
-                        border: `1px solid ${t.inputBorder}`, 
-                        background: t.inputBg, 
-                        color: t.inputText, 
-                        outline: 'none', 
-                        fontSize: '12px',
-                        transition: 'border 0.2s'
-                      }} 
+                      placeholder="Mesaj yazın..."
+                      style={{
+                        flex: 1,
+                        padding: '8px 12px',
+                        borderRadius: '100px',
+                        border: `1px solid ${t.inputBorder}`,
+                        background: t.inputBg,
+                        color: t.inputText,
+                        fontSize: '11px',
+                        outline: 'none'
+                      }}
                       onFocus={e => e.target.style.borderColor = t.activeTab}
                       onBlur={e => e.target.style.borderColor = t.inputBorder}
                     />
-                    {/* Floating Action Send Button */}
                     <button 
-                      type="submit" 
+                      type="submit"
                       style={{
                         background: t.activeTab, 
-                        color: '#ffffff', 
-                        border: 'none', 
-                        width: '36px', 
-                        height: '36px', 
-                        borderRadius: '50%', 
-                        cursor: 'pointer', 
-                        display: 'flex', 
-                        alignItems: 'center', 
+                        color: '#ffffff',
+                        border: 'none',
+                        width: '30px',
+                        height: '30px',
+                        borderRadius: '50%',
+                        display: 'flex',
+                        alignItems: 'center',
                         justifyContent: 'center',
-                        boxShadow: '0 4px 10px rgba(0, 0, 0, 0.15)',
-                        transition: 'transform 0.1s'
+                        cursor: 'pointer',
+                        boxShadow: '0 2px 8px rgba(2, 132, 199, 0.25)'
                       }}
-                      onMouseDown={e => e.currentTarget.style.transform = 'scale(0.95)'}
-                      onMouseUp={e => e.currentTarget.style.transform = 'scale(1)'}
                     >
-                      <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>send</span>
+                      <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>send</span>
                     </button>
                   </form>
                 </div>
               )}
 
-              {/* HISTORY / TIME MACHINE TAB */}
+              {/* HISTORY TAB */}
               {activeTab === 'history' && (
-                <div style={{ animation: 'fadeIn 0.2s', display: 'flex', flexDirection: 'column', height: '100%' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                    <p style={{ color: t.textSecondary, fontSize: '11px', lineHeight: 1.4, flex: 1, marginRight: '10px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', height: '100%', animation: 'fadeIn 0.2s' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                    <div style={{ fontSize: '10px', color: t.textSecondary, maxWidth: '65%', lineHeight: 1.3 }}>
                       Mevcut Blockly çalışma alanını buluta yedekleyebilir veya geçmiş yedeklere dönebilirsiniz.
-                    </p>
-                    
-                    {/* Backup Save button */}
+                    </div>
                     <button
                       onClick={createBackup}
                       style={{
-                        padding: '6px 12px',
-                        background: t.btnBg,
-                        color: t.btnText,
-                        border: 'none',
+                        padding: '8px 14px',
                         borderRadius: '100px',
+                        border: 'none',
+                        background: t.activeTab,
+                        color: '#ffffff',
                         fontSize: '11px',
-                        fontWeight: 600,
+                        fontWeight: 700,
                         cursor: 'pointer',
                         display: 'flex',
                         alignItems: 'center',
                         gap: '4px',
-                        whiteSpace: 'nowrap'
+                        boxShadow: '0 2px 8px rgba(2, 132, 199, 0.25)',
+                        transition: 'opacity 0.2s'
                       }}
+                      onMouseOver={e => e.currentTarget.style.opacity = '0.9'}
+                      onMouseOut={e => e.currentTarget.style.opacity = '1'}
                     >
                       <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>save</span>
                       Yedek Al
                     </button>
                   </div>
 
-                  {/* List of Checkpoints */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', flex: 1, overflowY: 'auto' }}>
+                  <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <div style={{ fontSize: '10px', fontWeight: 700, color: t.textSecondary, paddingLeft: '4px' }}>Yedek Geçmişi</div>
                     {historyCheckpoints.length === 0 ? (
-                      <div style={{ 
-                        margin: 'auto', 
-                        color: t.textSecondary, 
-                        fontSize: '12px', 
-                        textAlign: 'center',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        alignItems: 'center',
-                        gap: '6px'
-                      }}>
+                      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: t.textSecondary, gap: '8px', padding: '20px 0' }}>
                         <span className="material-symbols-outlined" style={{ fontSize: '28px' }}>history</span>
-                        Henüz bulut yedeği yok.<br />İlk yedeğinizi alın!
+                        <span style={{ fontSize: '11px', textAlign: 'center' }}>Henüz bulut yedeği yok.<br />İlk yedeğinizi alın!</span>
                       </div>
                     ) : (
                       historyCheckpoints.map((cp) => {
@@ -1438,62 +1716,41 @@ const CloudBlockUI: React.FC = () => {
                           <div 
                             key={cp.id} 
                             style={{ 
-                              display: 'flex', 
-                              alignItems: 'center', 
-                              gap: '12px', 
-                              padding: '10px 12px',
-                              background: t.cardBg,
+                              padding: '10px 12px', 
+                              background: t.cardBg, 
+                              borderRadius: '12px',
                               border: `1px solid ${t.border}`,
-                              borderRadius: '14px',
-                              transition: 'border-color 0.2s'
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              gap: '10px'
                             }}
                           >
-                            <span 
-                              className="material-symbols-outlined" 
-                              style={{ 
-                                color: isCreatorMe ? t.activeTab : t.textSecondary,
-                                fontSize: '20px' 
-                              }}
-                            >
-                              settings_backup_restore
-                            </span>
-                            
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{ 
-                                fontSize: '12px', 
-                                fontWeight: 600, 
-                                color: t.textPrimary,
-                                whiteSpace: 'nowrap',
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis'
-                              }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, flex: 1 }}>
+                              <span style={{ fontSize: '11px', color: t.textPrimary, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                 {cp.name}
-                              </div>
-                              <div style={{ fontSize: '10px', color: t.textSecondary, display: 'flex', gap: '4px' }}>
-                                <span>{new Date(cp.timestamp).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}</span>
-                                <span>•</span>
-                                <span>{isCreatorMe ? 'Sen' : `Kullanıcı ${cp.author.substring(0, 4)}`}</span>
-                              </div>
+                              </span>
+                              <span style={{ fontSize: '8px', color: t.textSecondary, marginTop: '2px' }}>
+                                {new Date(cp.timestamp).toLocaleTimeString()} - {isCreatorMe ? 'Sen' : `Kullanıcı ${cp.author.substring(0, 4)}`}
+                              </span>
                             </div>
-
-                            <button 
+                            
+                            <button
                               onClick={() => restoreCheckpoint(cp)}
-                              style={{ 
+                              style={{
+                                border: 'none',
                                 background: t.activeTabBg, 
-                                border: 'none', 
-                                padding: '5px 12px', 
-                                borderRadius: '100px', 
-                                fontSize: '11px', 
+                                color: t.activeTab,
+                                padding: '5px 12px',
+                                borderRadius: '100px',
+                                fontSize: '10px',
                                 fontWeight: 700,
-                                color: t.activeTab, 
                                 cursor: 'pointer',
                                 display: 'flex',
                                 alignItems: 'center',
                                 gap: '2px',
                                 transition: 'opacity 0.2s'
                               }}
-                              onMouseOver={e => e.currentTarget.style.opacity = '0.8'}
-                              onMouseOut={e => e.currentTarget.style.opacity = '1'}
                             >
                               Dön
                             </button>

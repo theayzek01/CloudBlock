@@ -1,0 +1,53 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // 1. Online Users Registry
+    match /online_users/{userId} {
+      allow read: if true;
+      allow write, delete: if true;
+    }
+
+    // 2. Collaborative User Projects
+    match /user_projects/{docId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    // 3. Real-time Invitations
+    match /invitations/{inviteId} {
+      allow read: if true;
+      allow create, update, delete: if true;
+    }
+
+    // 4. Rooms Collaboration Collections
+    match /rooms/{roomId} {
+      allow read: if true;
+      allow write: if true;
+
+      // Cursor Coordinates
+      match /cursors/{userId} {
+        allow read: if true;
+        allow write, delete: if true;
+      }
+
+      // Real-time Blockly Event Sync Document
+      match /sync/{document} {
+        allow read: if true;
+        allow write: if true;
+      }
+
+      // Real-time Chat Messages
+      match /messages/{messageId} {
+        allow read: if true;
+        allow write, delete: if true;
+      }
+
+      // Zaman Makinesi Backups / Checkpoints
+      match /history/{checkpointId} {
+        allow read: if true;
+        allow write, delete: if true;
+      }
+    }
+  }
+}
